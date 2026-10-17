@@ -1,0 +1,6 @@
+[submodule "external/raylib"]
+	path = external/raylib
+	url = http://localhost:3000/unknownrori/raylib
+[submodule "external/rmidi"]
+	path = external/rmidi
+	url = https://github.com/UnknownRori/rmidi.c

@@ -1,0 +1,75 @@
+import "umb.um"
+
+CC := "clang"
+
+// TODO  : (20261017-225235) Add Web version
+fn raylib(b: ^umb::Build): ^umb::Dependency {
+    src        := b.path("./external/raylib/src")
+    cflags     := []str{"-O2"}
+    deps       := []^umb::Dependency{}
+    linker_arg := []str{}
+
+    if b.os == "windows" {
+        linker_arg = append(linker_arg, "-lwinmm")
+        linker_arg = append(linker_arg, "-lgdi32")
+        linker_arg = append(linker_arg, "-lopengl32")
+        cflags     = append(cflags, "-DPLATFORM_DESKTOP")
+    } else {
+        linker_arg = append(linker_arg, "-lwinmm")
+        linker_arg = append(linker_arg, "-lgdi32")
+        linker_arg = append(linker_arg, "-lopengl32")
+        cflags     = append(cflags, "-DPLATFORM_DESKTOP")
+        cflags     = append(cflags, "-fPIC")
+        cflags     = append(cflags, "-D_GLFW_X11")
+        deps       = append(deps, b.dependency("m"))
+        deps       = append(deps, b.dependency("x11"))
+        deps       = append(deps, b.dependency("xext"))
+        deps       = append(deps, b.dependency("xrandr"))
+        deps       = append(deps, b.dependency("xcursor"))
+        deps       = append(deps, b.dependency("xfixes"))
+        deps       = append(deps, b.dependency("threads"))
+    }
+
+    lib := b.createLibrary({
+        name    : "raylib",
+        cc      : CC,
+        cflags  : cflags,
+        linker  : linker_arg,
+        deps    : deps,
+        sources : []str{
+            src.path("raudio.c"),
+            src.path("rcore.c"),
+            src.path("rmodels.c"),
+            src.path("rshapes.c"),
+            src.path("rtext.c"),
+            src.path("rtextures.c"),
+            src.path("rglfw.c"),
+        },
+        include_directories: []str{src.path("."), src.path("./external/glfw/include")},
+    })
+
+    return b.declareDependency({
+        name      : "raylib",
+        link_with : []^umb::Library{lib},
+        cflags    : cflags,
+        linker    : linker_arg,
+        deps      : deps,
+        include_directories : []str{src.path(".")},
+    })
+}
+
+fn build(b: ^umb::Build) {
+    raylib := raylib(b)
+    src := b.path("./src")
+    exe := b.createExecutable({
+        name    : "lyla-midi",
+        cc      : CC,
+        deps    : []^umb::Dependency{raylib},
+        sources : []str{
+            src.path("main.c"),
+        },
+    })
+
+    build := b.step("build", "Build the thing")
+    build.dependsOn(exe)
+}
