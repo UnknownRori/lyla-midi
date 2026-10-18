@@ -15,9 +15,6 @@ fn raylib(b: ^umb::Build): ^umb::Dependency {
         linker_arg = append(linker_arg, "-lopengl32")
         cflags     = append(cflags, "-DPLATFORM_DESKTOP")
     } else {
-        linker_arg = append(linker_arg, "-lwinmm")
-        linker_arg = append(linker_arg, "-lgdi32")
-        linker_arg = append(linker_arg, "-lopengl32")
         cflags     = append(cflags, "-DPLATFORM_DESKTOP")
         cflags     = append(cflags, "-fPIC")
         cflags     = append(cflags, "-D_GLFW_X11")
@@ -59,8 +56,10 @@ fn raylib(b: ^umb::Build): ^umb::Dependency {
 }
 
 fn build(b: ^umb::Build) {
-    raylib := raylib(b)
-    src := b.path("./src")
+    raylib   := raylib(b)
+    src      := b.path("./src")
+    external := b.path("./external")
+
     exe := b.createExecutable({
         name    : "lyla-midi",
         cc      : CC,
@@ -68,6 +67,10 @@ fn build(b: ^umb::Build) {
         sources : []str{
             src.path("main.c"),
         },
+        include_directories: []str{
+            src.path("."),
+            external.path("rmidi"),
+        }
     })
 
     build := b.step("build", "Build the thing")
