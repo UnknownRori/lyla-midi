@@ -4,4 +4,5 @@
 - PRIORITY: 100
 - TAGS:
 
-No description.
+This thing is blocked by:
+- [ ] 20261017-225202 - MIDI Parsing
