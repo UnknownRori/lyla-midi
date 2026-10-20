@@ -15,6 +15,13 @@ raw/
 *.kra
 *.kra~
 
+*.mp3
+*.ogg
+*.flac
+*.wav
+*.mid
+*.midi
+
 *.exe
 *.o
 *.dll
