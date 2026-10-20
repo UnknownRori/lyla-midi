@@ -4,3 +4,6 @@
 [submodule "external/rmidi"]
 	path = external/rmidi
 	url = https://github.com/UnknownRori/rmidi.c
+[submodule "external/rstb"]
+	path = external/rstb
+	url = https://github.com/UnknownRori/rstb
