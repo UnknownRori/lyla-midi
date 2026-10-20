@@ -8,5 +8,6 @@ void text_prepare(const char *utf8);
 void text_collect(const char *utf8);
 void text_flush(void);
 
-void  text_draw(const char *utf8, float x, float y, float size, Color color);
-float text_width(const char *utf8, float size);
+void    text_draw(const    char *utf8, float x, float y, float size, Color color);
+float   text_width(const   char *utf8, float size);
+Vector2 text_measure(const char *utf8, float size);

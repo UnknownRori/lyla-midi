@@ -121,3 +121,13 @@ float text_width(const char *utf8, float size)
 {
     return MeasureTextEx(font, utf8, size, 1).x;
 }
+
+float text_height(const char *utf8, float size)
+{
+    return MeasureTextEx(font, utf8, size, 1).y;
+}
+
+Vector2 text_measure(const char *utf8, float size)
+{
+    return MeasureTextEx(font, utf8, size, 1);
+}
