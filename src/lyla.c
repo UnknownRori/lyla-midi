@@ -26,6 +26,7 @@ void lyla_init(void)
     UnloadImage(img);
 
     text_init();
+    ui_background_init();
 }
 
 void lyla_update(void)
@@ -39,6 +40,7 @@ void lyla_update(void)
 
     BeginDrawing(); {
         ClearBackground(BLANK);
+        ui_background(w, h, &rori, false);
         ui_music_profile(w, h, &rori, "Yooo mom", "Mommy Remy", "UnknownRori");
     }; EndDrawing();
 }

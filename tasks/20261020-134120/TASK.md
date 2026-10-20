@@ -1,7 +1,7 @@
 # implementing background
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS:
 
-No description.
+Next is auto pan, for later

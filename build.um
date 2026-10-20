@@ -71,6 +71,7 @@ fn build(b: ^umb::Build) {
             src.path("text.c"),
             src.path("lyla.c"),
             src.path("ui/music_profile.c"),
+            src.path("ui/background.c"),
         },
         include_directories: []str{
             src.path("."),
