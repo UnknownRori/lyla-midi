@@ -1,5 +1,6 @@
 import "umb.um"
 
+OPTIMIZATION := "-O0"
 CC := "clang"
 
 // TODO  : (20261017-225235) Add Web version
@@ -63,9 +64,12 @@ fn build(b: ^umb::Build) {
     exe := b.createExecutable({
         name    : "lyla-midi",
         cc      : CC,
+        cflags  : []str{"-Wall", "-Wextra", OPTIMIZATION},
         deps    : []^umb::Dependency{raylib},
         sources : []str{
             src.path("main.c"),
+            src.path("text.c"),
+            src.path("lyla.c"),
         },
         include_directories: []str{
             src.path("."),
@@ -75,4 +79,8 @@ fn build(b: ^umb::Build) {
 
     build := b.step("build", "Build the thing")
     build.dependsOn(exe)
+
+    run := b.step("run", "Run the thing")
+    run.dependsOn(exe)
+    run.addCommand(exe.output())
 }

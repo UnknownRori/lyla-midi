@@ -1,17 +1,67 @@
 #include <raylib.h>
+#include <time.h>
+#include "lyla.h"
+#include "./assets/lyla.c"
+
+#if defined(PLATFORM_WEB)
+#include <emscripten/emscripten.h>
+
+static void UpdateGame()
+{
+    lyla_update();
+}
+#endif
+
+#if defined(_WIN32)
+#   define CP_UTF8 65001
+#   ifdef __cplusplus
+extern "C" {
+#   endif
+
+__declspec(dllimport) int __stdcall SetConsoleOutputCP(unsigned int wCodePageID);
+
+#   ifdef __cplusplus
+}
+#   endif
+#endif
 
 int main()
 {
-    InitWindow(1280, 720, "Lyla Midi");
+#if defined(_WIN32)
+    SetConsoleOutputCP(CP_UTF8);
+#endif
+    // int raylib_cfg_flag = 
+    //         FLAG_WINDOW_UNDECORATED  | 
+    //         FLAG_WINDOW_TRANSPARENT  | FLAG_VSYNC_HINT;
+    int raylib_cfg_flag = 
+            FLAG_WINDOW_TRANSPARENT  | FLAG_VSYNC_HINT;
+    SetConfigFlags(raylib_cfg_flag);
+    InitWindow(1280, 720, "UnknownRori's Lyla Midi Visualizer");
     InitAudioDevice();
+#ifdef WITH_MICROPHONE
+    InitMicrophoneDevice(44100, 2);
+#endif
+    SetExitKey(KEY_NULL);
+    SetRandomSeed((unsigned int)time(NULL));
 
+    lyla_init();
+    Image img = LoadImageFromMemory(".png", icon_png, icon_png_len);
+    SetWindowIcon(img);
+
+#if defined(PLATFORM_WEB)
+    emscripten_set_main_loop(UpdateGame, 0, 1);
+#else
     while (!WindowShouldClose()) {
-        BeginDrawing(); {
-            ClearBackground(GetColor(0x181818FF));
-        } EndDrawing();
+        if (lyla_should_close()) {
+            break;
+        }
+
+        lyla_update();
     }
+#endif
+
+    lyla_shutdown();
 
     CloseAudioDevice();
     CloseWindow();
-    return 0;
 }
