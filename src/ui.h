@@ -20,3 +20,13 @@ void ui_background(
     const Texture* texture,
     bool  auto_pan
 );
+
+void ui_music_info(
+    u32 w, 
+    u32 h, 
+    const char* key_signature, 
+    u8 bpm,
+    float time_played,
+    u8 nominator,
+    u8 denominator
+);

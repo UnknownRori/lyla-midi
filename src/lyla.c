@@ -42,6 +42,7 @@ void lyla_update(void)
         ClearBackground(BLANK);
         ui_background(w, h, &rori, false);
         ui_music_profile(w, h, &rori, "Yooo mom", "Mommy Remy", "UnknownRori");
+        ui_music_info(w, h, "F#", 169, 69, 3, 4);
     }; EndDrawing();
 }
 

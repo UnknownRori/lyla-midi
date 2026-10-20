@@ -6,7 +6,7 @@
 
 The HUD will consist of information regarding the song are currently played
 - [X] 20261018-235625 - Music Profile
-- [ ] TODO            - Key Signature, Time Signature, Elapsed Time, BPM
+- [X] 20261020-140116 - Key Signature, Time Signature, Elapsed Time, BPM
 - [ ] TODO            - Beat Counter
 - [ ] TODO            - Chord played
 
