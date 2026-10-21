@@ -70,6 +70,7 @@ fn build(b: ^umb::Build) {
             src.path("main.c"),
             src.path("text.c"),
             src.path("lyla.c"),
+            src.path("thirdparty/rmidi.c"),
             src.path("ui/music_profile.c"),
             src.path("ui/background.c"),
             src.path("ui/music_info.c"),

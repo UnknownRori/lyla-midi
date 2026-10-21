@@ -1,4 +1,5 @@
 #include "raylib.h"
+#include "rstb_common.h"
 #include "text.h"
 #include "ui.h"
 #include "utils.h"
@@ -17,6 +18,8 @@ void ui_music_info(
     u8 nominator,
     u8 denominator
 ) {
+    UNUSED(h);
+
     f32 offset_y = PADDING * 3;
     f32 offset_x = w - PADDING * 2;
     const char* meter = "METER";
@@ -49,7 +52,7 @@ void ui_music_info(
         GRAY
     );
 
-    const char* elapsed = TextFormat("%d:%d", 69, 69); // TODO : Fix this later
+    const char* elapsed = TextFormat("%02d:%02d", (int)(time_played / 60), (int)time_played % 60);
     text_draw(
         elapsed, 
         offset_x - meter_measure.x - elapsed_text_measure.x, 
