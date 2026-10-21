@@ -34,3 +34,6 @@ songs/*/*
 
 env.h
 *.iss
+
+src/assets/rori_ttf.c
+src/assets/lythian.c
