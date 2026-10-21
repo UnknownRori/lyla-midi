@@ -1,5 +1,7 @@
 # Lyla Midi
 
+https://github.com/user-attachments/assets/34af0aa4-6b56-4519-85ef-48f847fdadda
+
 A subproject of Lyla music visualizer for MIDI visualizer version, mainly focused on MIDI.
 
 ## Build
