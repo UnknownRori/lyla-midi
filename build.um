@@ -10,6 +10,7 @@ fn raylib(b: ^umb::Build): ^umb::Dependency {
     deps       := []^umb::Dependency{}
     linker_arg := []str{}
 
+    cflags     = append(cflags, "-DSUPPORT_FILEFORMAT_FLAC")
     if b.os == "windows" {
         linker_arg = append(linker_arg, "-lwinmm")
         linker_arg = append(linker_arg, "-lgdi32")
@@ -75,6 +76,8 @@ fn build(b: ^umb::Build) {
             src.path("ui/background.c"),
             src.path("ui/midi_visualizer.c"),
             src.path("ui/music_info.c"),
+            src.path("ui/chord_info.c"),
+            src.path("ui/beat.c"),
         },
         include_directories: []str{
             src.path("."),
