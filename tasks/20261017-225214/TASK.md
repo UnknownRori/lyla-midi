@@ -1,8 +1,8 @@
 # Implement midi visualization
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS:
 
 This thing is blocked by:
-- [ ] 20261017-225202 - MIDI Parsing
+- [X] 20261017-225202 - MIDI Parsing

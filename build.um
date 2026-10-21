@@ -73,6 +73,7 @@ fn build(b: ^umb::Build) {
             src.path("thirdparty/rmidi.c"),
             src.path("ui/music_profile.c"),
             src.path("ui/background.c"),
+            src.path("ui/midi_visualizer.c"),
             src.path("ui/music_info.c"),
         },
         include_directories: []str{

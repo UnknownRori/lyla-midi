@@ -91,9 +91,10 @@ void ui_music_info(
         GRAY
     );
 
+    Vector2 key_sig_measure = text_measure(key_signature, TEXT_SIZE);
     text_draw(
         key_signature, 
-        offset_x - meter_measure.x - elapsed_text_measure.x - bpm_text_measure.x - key_sig_text_measure.x, 
+        offset_x - meter_measure.x - elapsed_text_measure.x - bpm_text_measure.x - key_sig_text_measure.x - key_sig_measure.x / 2. ,
         offset_y + PADDING + elapsed_text_measure.y, 
         TEXT_SIZE, 
         WHITE
