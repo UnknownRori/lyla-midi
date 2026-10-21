@@ -22,31 +22,12 @@ void ui_music_info(
 
     f32 offset_y = PADDING * 3;
     f32 offset_x = w - PADDING * 2;
-    const char* meter = "METER";
-    Vector2 meter_measure = text_measure(meter, TEXT_SIZE_SECONDARY);
-    text_draw(
-        meter, 
-        offset_x - meter_measure.x, 
-        offset_y, 
-        TEXT_SIZE_SECONDARY, 
-        GRAY
-    );
-
-    const char* bar = TextFormat("%u/%u", nominator, denominator);
-    text_draw(
-        bar, 
-        offset_x - meter_measure.x, 
-        offset_y + PADDING + meter_measure.y, 
-        TEXT_SIZE, 
-        WHITE
-    );
-
     const char* elapsed_text = "ELAPSED";
     Vector2 elapsed_text_measure = text_measure(elapsed_text, TEXT_SIZE_SECONDARY);
     elapsed_text_measure.x += PADDING_BETWEEN;
     text_draw(
         elapsed_text, 
-        offset_x - meter_measure.x - elapsed_text_measure.x, 
+        offset_x -  elapsed_text_measure.x, 
         offset_y, 
         TEXT_SIZE_SECONDARY, 
         GRAY
@@ -55,8 +36,29 @@ void ui_music_info(
     const char* elapsed = TextFormat("%02d:%02d", (int)(time_played / 60), (int)time_played % 60);
     text_draw(
         elapsed, 
-        offset_x - meter_measure.x - elapsed_text_measure.x, 
+        offset_x -  elapsed_text_measure.x, 
         offset_y + PADDING + elapsed_text_measure.y, 
+        TEXT_SIZE, 
+        WHITE
+    );
+
+
+    const char* meter = "METER";
+    Vector2 meter_measure = text_measure(meter, TEXT_SIZE_SECONDARY);
+    meter_measure.x += PADDING_BETWEEN;
+    text_draw(
+        meter, 
+        offset_x - meter_measure.x - elapsed_text_measure.x, 
+        offset_y, 
+        TEXT_SIZE_SECONDARY, 
+        GRAY
+    );
+
+    const char* bar = TextFormat("%u/%u", nominator, denominator);
+    text_draw(
+        bar, 
+        offset_x - meter_measure.x - elapsed_text_measure.x, 
+        offset_y + PADDING + meter_measure.y, 
         TEXT_SIZE, 
         WHITE
     );

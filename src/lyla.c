@@ -141,7 +141,7 @@ void lyla_update(void)
 
     BeginDrawing(); {
         ClearBackground(BLANK);
-        ui_background(w, h, &rori, false);
+        ui_background(w, h, &rori, true);
         // ui_music_profile(w, h, &rori, "Lilith Introduction", "Lilith", "UnknownRori");
         ui_music_profile(w, h, &rori, "Lurie", "Solas na Gréine", "Rigël Theatre");
         ui_music_info(w, h, key_text, midi_bpm_at(&tempo, ticks) , now, pos.numerator, pos.denominator);
