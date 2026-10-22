@@ -80,10 +80,10 @@ Font lythian;
 
 void lyla_init(void)
 {
-    // Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
-    // rori = LoadTextureFromImage(img);
-    // UnloadImage(img);
-    rori = LoadTexture("cover.png");
+    Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
+    rori = LoadTextureFromImage(img);
+    UnloadImage(img);
+    // rori = LoadTexture("cover.png");
 
     lythian = LoadFontFromMemory(".ttf", __resources_Lythian_ttf, __resources_Lythian_ttf_len, 32, NULL, 0);
 
@@ -156,7 +156,7 @@ void lyla_update(void)
 
 void lyla_shutdown(void)
 {
-
+    ui_background_shutdown();
 }
 
 

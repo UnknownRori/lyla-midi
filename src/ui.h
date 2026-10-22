@@ -18,11 +18,11 @@
 #endif
 
 #ifndef PIANO_ROLL_TAIL_LIFE
-#define PIANO_ROLL_TAIL_LIFE        2.9
+#define PIANO_ROLL_TAIL_LIFE        2.0
 #endif
 
 #ifndef PIANO_ROLL_TAIL_DELAY
-#define PIANO_ROLL_TAIL_DELAY       1.25
+#define PIANO_ROLL_TAIL_DELAY       1.00
 #endif
 
 #ifndef PIANO_ROLL_TAIL_SPREAD
@@ -50,6 +50,7 @@ void ui_music_profile(
 );
 
 bool ui_background_init();
+void ui_background_shutdown(void);
 void ui_background_target_pan(u32 x, u32 y);
 void ui_background(
     u32   w,
