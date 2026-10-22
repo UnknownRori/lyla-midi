@@ -10,7 +10,7 @@
 #   include "assets/blur330_frag.c"
 #endif
 
-#define BG_BLACK_BLEND  0.5f
+#define BG_BLACK_BLEND  0.7f
 
 #define BG_BLUR_SIZE    512
 #define BG_BLUR_RADIUS  8.0f

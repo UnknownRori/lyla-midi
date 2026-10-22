@@ -175,7 +175,7 @@ void piano_roll_draw_fx(const PianoRoll* r, Rectangle roll, double now, unsigned
                  (int)(roll.y + 4 * sc), (int)fmaxf(10.0f, 14 * sc), (Color){ 128, 148, 165, 200 });
     }
     const float px = piano_roll_x(ticks, span_start, span_end, left, right);
-    DrawLineEx((Vector2){ left, ruler_y }, (Vector2){ px, ruler_y }, 2.0f, (Color){ 255, 255, 255, 170 });
+    DrawRectangleGradientH(left, ruler_y, px - left, 2., BLANK, WHITE);
 
     const int   n_keys = r->high_key - r->low_key + 1;
     const float slot   = (notes_bot - notes_top) / (float)n_keys;
@@ -323,6 +323,11 @@ void piano_roll_draw_fx(const PianoRoll* r, Rectangle roll, double now, unsigned
             DrawRectangleGradientH((int)left, (int)roll.y, gw, (int)roll.height,
                                    (Color){ er, eg, eb, (unsigned char)(140 * k) }, (Color){ er, eg, eb, 0 });
             DrawRectangleGradientH((int)right - gw, (int)roll.y, gw, (int)roll.height,
+                                   (Color){ er, eg, eb, 0 }, (Color){ er, eg, eb, (unsigned char)(140 * k) });
+
+            DrawRectangleGradientH(px, ruler_y - 8 * sc, gw, (int)roll.height,
+                                   (Color){ er, eg, eb, (unsigned char)(140 * k) }, (Color){ er, eg, eb, 0 });
+            DrawRectangleGradientH(px - gw, ruler_y - 8 * sc, gw, (int)roll.height,
                                    (Color){ er, eg, eb, 0 }, (Color){ er, eg, eb, (unsigned char)(140 * k) });
         }
         EndBlendMode();

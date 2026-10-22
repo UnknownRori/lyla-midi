@@ -27,7 +27,9 @@ void ui_chord_info_ex(
     midi_chord_name(chord, false, name, sizeof(name));
     midi_chord_roman(chord, key, roman, sizeof(roman));
 
-    DrawLineEx(VEC2(w / 2. - 256, h - 96), VEC2(w / 2. + 256, h - 96), 2., GRAY);
+    DrawRectangleGradientH(w / 2., h - 96, 256, 2, WHITE, BLANK);
+    DrawRectangleGradientH(w / 2. - 256, h - 96, 256, 2, BLANK, WHITE);
+
     Vector2 name_measure = text_measure(name, TEXT_SIZE);
     Vector2 name_pos = {w / 2. - name_measure.x / 2., h - 128 + name_measure.y + PADDING};
     text_draw(name, name_pos.x, name_pos.y, TEXT_SIZE, WHITE);
