@@ -8,6 +8,7 @@ u8   config_app_fps();
 bool config_app_vsync();
 bool config_app_transparent();
 bool config_app_fullscreen();
+bool config_app_render();
 
 bool config_fx_piano_roll_bloom();
 bool config_fx_piano_roll_trail();
@@ -22,3 +23,7 @@ const char* config_music_audio();
 const char* config_music_midi();
 const char* config_music_thumbnail();
 const char* config_music_bg();
+
+const char* config_video_output();
+u32   config_video_video_bitrate();
+u32   config_video_fps();
