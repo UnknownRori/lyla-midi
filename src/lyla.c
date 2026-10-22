@@ -17,6 +17,8 @@ static bool s_should_exit = false;
 static FFT_Analyzer* analyzer = NULL;
 static RenderTexture visualizer;
 static Texture rori;
+static Texture thumbnail;
+static Texture bg;
 
 Midi           midi = {0};
 MidiTempoMap   tempo;
@@ -121,16 +123,17 @@ void lyla_init(void)
         exit(69);
     }
 
-    // Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
-    // rori = LoadTextureFromImage(img);
-    // UnloadImage(img);
-    rori = LoadTexture("cover.png");
+    Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
+    rori = LoadTextureFromImage(img);
+    UnloadImage(img);
+    thumbnail = LoadTexture("cover.png");
+    bg = LoadTexture("cover.png");
 
     lythian = LoadFontFromMemory(".ttf", __resources_Lythian_ttf, __resources_Lythian_ttf_len, 32, NULL, 0);
 
     // TODO : Refactor this
     i32 buf_size;
-    u8* buf = LoadFileData("song.mid", &buf_size);
+    u8* buf = LoadFileData("lurie.mid", &buf_size);
 
     if (!midi_parse(&midi, buf, buf_size)) {
         exit(69);
@@ -142,7 +145,7 @@ void lyla_init(void)
 
     piano_roll_init(&s_roll, &midi, &tempo, &sig, &notes);
 
-    music = LoadMusicStream("song.mp3");
+    music = LoadMusicStream("lurie-ori.mp3");
     music.looping = false;
     PlayMusicStream(music);
     PauseMusicStream(music);
@@ -194,7 +197,7 @@ void lyla_update(void)
 
     BeginDrawing(); {
         ClearBackground(BLANK);
-        ui_background(w, h, &rori, true);
+        ui_background(w, h, &bg, true);
         if (IsRenderTextureValid(visualizer))
         {
             BeginTextureMode(visualizer);
@@ -239,13 +242,22 @@ void lyla_update(void)
         }
 
         // ui_music_profile(w, h, &rori, "Lilith Introduction", "Lilith", "UnknownRori");
-        ui_music_profile(w, h, &rori, "Lurie", "Solas na Gréine", "Rigël Theatre");
+        ui_music_profile(w, h, &thumbnail, "Lurie", "Solas na Gréine", "Rigël Theatre");
         ui_music_info(w, h, key_text, midi_bpm_at(&tempo, ticks) , now, pos.numerator, pos.denominator);
         ui_chord_info(w, h, &chord, &key);
         ui_beat_info(w, h, &pos);
         piano_roll_draw(&s_roll, roll, now);
 
         text_draw("UnknownRori's Softwork", 0, 0, 12, GRAY);
+
+        DrawTexturePro(
+            rori, 
+            RECT_FROM_TEXTURE(0, 0, rori), 
+            RECT(w - 64 - 16, h - 64 - 16, 64, 64), 
+            VEC2_ZERO, 
+            0.0, 
+            WHITE
+        );
 
     }; EndDrawing();
 }
