@@ -78,13 +78,15 @@ static f32 shake_time = 0.0f;
 static Texture* old_thumb = NULL;
 static bool dirty = true;
 static Vector2 mouse;
+static f32 blur_strength = BLUR_STRENGTH;
 
 void hud_background_set_panning(bool on) { panning = on; }
 void hud_background_toggle_panning(void) { panning = !panning; }
 bool hud_background_panning(void)        { return panning; }
 
-void ui_background_init()
+void ui_background_init(f32 blur)
 {
+    blur_strength = blur;
     pass1 = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
     cache = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
 #if defined(PLATFORM_WEB)
@@ -391,7 +393,7 @@ void ui_background(Texture* thumbptr, u32 w, u32 h, f32 dt, f32 music_elapsed, f
         BeginTextureMode(pass1);
             ClearBackground(BLACK);
             BeginShaderMode(blurShader);
-                f32 dirX[2] = { BLUR_STRENGTH, 0.0f };
+                f32 dirX[2] = { blur_strength, 0.0f };
                 SetShaderValue(blurShader, directionLoc, dirX, SHADER_UNIFORM_VEC2);
                 DrawTexturePro(thumb, source, full, (Vector2){0, 0}, 0.0f, WHITE);
             EndShaderMode();
@@ -400,7 +402,7 @@ void ui_background(Texture* thumbptr, u32 w, u32 h, f32 dt, f32 music_elapsed, f
         BeginTextureMode(cache);
             ClearBackground(BLACK);
             BeginShaderMode(blurShader);
-                f32 dirY[2] = { 0.0f, BLUR_STRENGTH };
+                f32 dirY[2] = { 0.0f, blur_strength };
                 SetShaderValue(blurShader, directionLoc, dirY, SHADER_UNIFORM_VEC2);
                 DrawTexturePro(
                     pass1.texture,

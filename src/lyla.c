@@ -1,6 +1,7 @@
 #include <stdlib.h>
 
 #include "lyla.h"
+#include "config.h"
 #include "raylib.h"
 #include "rmidi.h"
 #include "rmidi_ext.h"
@@ -12,6 +13,10 @@
 #include "text.h"
 #include "ui.h"
 #include "utils.h"
+#include "assets/lythian.c"
+
+Font lythian;
+
 
 static bool s_should_exit = false;
 static FFT_Analyzer* analyzer = NULL;
@@ -59,33 +64,6 @@ static void handle_input(void)
         }
     }
 }
-
-static float time_to_x(double t, double win_start, double win_end, Rectangle roll)
-{
-    double f = (t - win_start) / (win_end - win_start);
-    if (f < 0.0) f = 0.0;
-    if (f > 1.0) f = 1.0;
-    return roll.x + (float)(f * roll.width);
-}
-
-static size_t first_note_from(const MidiNoteList* notes, double t)
-{
-    size_t lo = 0, hi = notes->count;
-    while (lo < hi) {
-        size_t mid = (lo + hi) / 2;
-        if (notes->items[mid].start < t) 
-            lo = mid + 1;
-        else
-            hi = mid;
-    }
-    return lo;
-}
-
-
-#include "assets/lythian.c"
-
-Font lythian;
-
 static f32 fast_energy = 0.0f;
 static f32 slow_energy = 0.0f;
 
@@ -117,6 +95,7 @@ static void audio_callback(void *buffer, unsigned int frames)
 
 void lyla_init(void)
 {
+    ChangeDirectory("./");
     analyzer = fft_analyzer_create();
     if (analyzer == NULL) {
         TraceLog(LOG_ERROR, "Failed to allocate FFT Analyzer");
@@ -126,14 +105,22 @@ void lyla_init(void)
     Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
     rori = LoadTextureFromImage(img);
     UnloadImage(img);
-    thumbnail = LoadTexture("cover.png");
-    bg = LoadTexture("cover.png");
+    if (config_music_thumbnail() == NULL) {
+        thumbnail = rori;
+    } else {
+        thumbnail = LoadTexture(config_music_thumbnail());
+    }
+    if (config_music_bg() == NULL) {
+        bg = rori;
+    } else {
+        bg = LoadTexture(config_music_bg());
+    }
 
     lythian = LoadFontFromMemory(".ttf", __resources_Lythian_ttf, __resources_Lythian_ttf_len, 32, NULL, 0);
 
     // TODO : Refactor this
     i32 buf_size;
-    u8* buf = LoadFileData("lurie.mid", &buf_size);
+    u8* buf = LoadFileData(config_music_midi(), &buf_size);
 
     if (!midi_parse(&midi, buf, buf_size)) {
         exit(69);
@@ -145,7 +132,7 @@ void lyla_init(void)
 
     piano_roll_init(&s_roll, &midi, &tempo, &sig, &notes);
 
-    music = LoadMusicStream("lurie-ori.mp3");
+    music = LoadMusicStream(config_music_audio());
     music.looping = false;
     PlayMusicStream(music);
     PauseMusicStream(music);
@@ -155,7 +142,7 @@ void lyla_init(void)
 
     text_init();
     visualizer_init();
-    ui_background_init();
+    ui_background_init(config_fx_bg_blur());
 
     visualizer = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
 }
@@ -200,7 +187,7 @@ void lyla_update(void)
     BeginDrawing(); {
         ClearBackground(BLANK);
         ui_background(&bg, w, h, dt, now, du);
-        if (IsRenderTextureValid(visualizer))
+        if (IsRenderTextureValid(visualizer) && config_fx_audio_visualizer())
         {
             BeginTextureMode(visualizer);
                 ClearBackground(BLANK);
@@ -238,7 +225,7 @@ void lyla_update(void)
                 RECT(0, 0, w, h), 
                 VEC2_ZERO, 
                 0.f, 
-                ColorAlpha(WHITE, 0.25)
+                ColorAlpha(WHITE, 0.10)
             );
         }
 
@@ -249,7 +236,7 @@ void lyla_update(void)
         ui_beat_info(w, h, &pos);
         piano_roll_draw(&s_roll, roll, now);
 
-        text_draw("UnknownRori's Softwork", 0, 0, 12, GRAY);
+        text_draw("UnknownRori's Softwork - v0.1", 0, 0, 6, GRAY);
 
         DrawTexturePro(
             rori, 

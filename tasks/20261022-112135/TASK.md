@@ -1,6 +1,6 @@
 # configuration file vs ui to render stuff
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 100
 - TAGS:
 

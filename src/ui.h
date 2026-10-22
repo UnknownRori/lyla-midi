@@ -53,7 +53,7 @@ void ui_music_profile(
     const char*    author
 );
 
-void ui_background_init();
+void ui_background_init(f32 blur);
 void ui_background_shutdown(void);
 void ui_background_target_pan(u32 x, u32 y);
 void ui_background(
