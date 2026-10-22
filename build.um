@@ -1,6 +1,6 @@
 import "umb.um"
 
-OPTIMIZATION := "-O0"
+OPTIMIZATION := "-O3"
 CC := "clang"
 
 // TODO  : (20261017-225235) Add Web version
@@ -71,6 +71,7 @@ fn build(b: ^umb::Build) {
             src.path("main.c"),
             src.path("text.c"),
             src.path("lyla.c"),
+            src.path("config.c"),
             src.path("thirdparty/rmidi.c"),
             src.path("ui/music_profile.c"),
             src.path("ui/background.c"),
@@ -85,6 +86,7 @@ fn build(b: ^umb::Build) {
             src.path("."),
             external.path("rstb"),
             external.path("rmidi"),
+            external.path("config.c/src"),
         }
     })
 
