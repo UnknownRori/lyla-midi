@@ -21,6 +21,8 @@
 #define FADE_IN_TIME 3.0f
 #define FADE_OUT_TIME 3.0f
 
+#define BLUR_STRENGTH 1.0f
+
 #define AUTO_PAN_PAUSE_MIN 4.0f
 #define AUTO_PAN_PAUSE_MAX 8.0f
 #define EASE_COUNT 5
@@ -389,7 +391,7 @@ void ui_background(Texture* thumbptr, u32 w, u32 h, f32 dt, f32 music_elapsed, f
         BeginTextureMode(pass1);
             ClearBackground(BLACK);
             BeginShaderMode(blurShader);
-                f32 dirX[2] = { 1.0f, 0.0f };
+                f32 dirX[2] = { BLUR_STRENGTH, 0.0f };
                 SetShaderValue(blurShader, directionLoc, dirX, SHADER_UNIFORM_VEC2);
                 DrawTexturePro(thumb, source, full, (Vector2){0, 0}, 0.0f, WHITE);
             EndShaderMode();
@@ -398,7 +400,7 @@ void ui_background(Texture* thumbptr, u32 w, u32 h, f32 dt, f32 music_elapsed, f
         BeginTextureMode(cache);
             ClearBackground(BLACK);
             BeginShaderMode(blurShader);
-                f32 dirY[2] = { 0.0f, 1.0f };
+                f32 dirY[2] = { 0.0f, BLUR_STRENGTH };
                 SetShaderValue(blurShader, directionLoc, dirY, SHADER_UNIFORM_VEC2);
                 DrawTexturePro(
                     pass1.texture,

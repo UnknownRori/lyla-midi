@@ -547,15 +547,24 @@ void piano_roll_draw_fx(const PianoRoll* piano_roll, Rectangle area, double now,
         BeginBlendMode(BLEND_ADDITIVE);
         for (int glow_index = 0; glow_index < view.glow_count; glow_index++) {
             const PianoRollGlow* glow = &view.glows[glow_index];
-            for (int layer = 0; layer < 3; layer++) {
-                float grow  = (3 + layer * 5) * scale;
-                float alpha = fminf(0.5f, 0.22f * glow->intensity / (1.0f + layer));
-                DrawRectangleRec((Rectangle){ glow->x - view.head_width - grow, glow->y - glow->height * 0.65f - grow,
-                                              view.head_width + grow * 2, glow->height * 1.3f + grow * 2 }, Fade(glow->color, alpha));
+            BeginBlendMode(BLEND_ADDITIVE);
+
+            DrawCircle(glow->x, glow->y, 1.5f * scale, Fade(glow->color, 0.9f));
+            DrawCircle(glow->x, glow->y, 3.0f * scale, Fade(glow->color, 0.6f));
+
+            int total_layers = 10;
+            for (int layer = 0; layer < total_layers; layer++) {
+                float t = (float)layer / (total_layers - 1);
+                
+                float grow = (4.0f + t * 40.0f) * scale;
+                
+                float alpha = glow->intensity * 0.2f * expf(-t * 3.5f);
+                alpha = fminf(0.35f, alpha);
+                
+                DrawCircle(glow->x, glow->y, grow, Fade(glow->color, alpha));
             }
-            float streak = (24 + 24 * glow->intensity) * scale;
-            DrawRectangleGradientH((int)(glow->x - streak), (int)(glow->y - glow->height * 0.3f), (int)streak, (int)fmaxf(1.0f, glow->height * 0.6f),
-                                   (Color){ glow->color.r, glow->color.g, glow->color.b, 0 }, Fade(glow->color, fminf(0.6f, 0.3f * glow->intensity)));
+
+            EndBlendMode();
         }
         if (fx & PIANO_ROLL_FX_KICK) {
             piano_roll_draw_neon_edge(&view, view.left_x, true);
