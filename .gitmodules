@@ -7,3 +7,6 @@
 [submodule "external/rstb"]
 	path = external/rstb
 	url = https://github.com/UnknownRori/rstb
+[submodule "external/config.c"]
+	path = external/config.c
+	url = https://github.com/UnknownRori/config.c
