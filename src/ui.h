@@ -53,14 +53,15 @@ void ui_music_profile(
     const char*    author
 );
 
-bool ui_background_init();
+void ui_background_init();
 void ui_background_shutdown(void);
 void ui_background_target_pan(u32 x, u32 y);
 void ui_background(
-    u32   w,
-    u32   h,
-    const Texture* texture,
-    bool  auto_pan
+    Texture* thumbptr, 
+    u32 w, u32 h, 
+    f32 dt, 
+    f32 music_elapsed, 
+    f32 music_duration
 );
 
 void ui_music_info(

@@ -150,6 +150,7 @@ void lyla_init(void)
     PlayMusicStream(music);
     PauseMusicStream(music);
 
+
     AttachAudioStreamProcessor(music.stream, audio_callback);
 
     text_init();
@@ -174,8 +175,9 @@ void lyla_update(void)
     UpdateMusicStream(music);
 
     // TODO : Refactor this
-    f32 now = GetMusicTimePlayed(music);
-    double       ticks = midi_seconds_to_ticks(&midi, &tempo, now);
+    f32    now   = GetMusicTimePlayed(music);
+    f32    du    = GetMusicTimeLength(music);
+    double ticks = midi_seconds_to_ticks(&midi, &tempo, now);
     MidiPosition pos;
     midi_ticks_to_position(&midi, &sig, &pos, ticks);
     MidiBar bar[2];
@@ -197,7 +199,7 @@ void lyla_update(void)
 
     BeginDrawing(); {
         ClearBackground(BLANK);
-        ui_background(w, h, &bg, true);
+        ui_background(&bg, w, h, dt, now, du);
         if (IsRenderTextureValid(visualizer))
         {
             BeginTextureMode(visualizer);
@@ -205,7 +207,6 @@ void lyla_update(void)
                 static f32 quiet_time = 0.0f;
                 f32 fe   = player_get_fast_energy(), se = player_get_slow_energy();
                 f32 t    = now;
-                f32 du   = GetMusicTimeLength(music);
                 f32 prog = t/du;
                 bool quiet;
                 if (t < 15.0f || prog < 0.05f) {
