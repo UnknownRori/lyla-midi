@@ -51,7 +51,7 @@ void ui_music_profile(
         );
     } else if (author != NULL) {
         text_draw(
-            TextFormat("%s", author), 
+            TextFormat("by %s", author), 
             text_offset, 
             title_y + PADDING + TEXT_SIZE, 
             TEXT_SIZE_SECONDARY, 
