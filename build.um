@@ -78,6 +78,8 @@ fn build(b: ^umb::Build) {
             src.path("ui/music_info.c"),
             src.path("ui/chord_info.c"),
             src.path("ui/beat.c"),
+            src.path("visualizer/fft.c"),
+            src.path("visualizer/visualizer.c"),
         },
         include_directories: []str{
             src.path("."),

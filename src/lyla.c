@@ -1,17 +1,22 @@
+#include <stdlib.h>
+
 #include "lyla.h"
 #include "raylib.h"
 #include "rmidi.h"
 #include "rmidi_ext.h"
 #include "rstb_common.h"
+#include "visualizer/fft.h"
+#include "visualizer/visualizer.h"
 
 #include "assets/rori.c"
 #include "text.h"
 #include "ui.h"
 #include "utils.h"
-#include <stdlib.h>
 
 static bool s_should_exit = false;
-Texture rori;
+static FFT_Analyzer* analyzer = NULL;
+static RenderTexture visualizer;
+static Texture rori;
 
 Midi           midi = {0};
 MidiTempoMap   tempo;
@@ -33,7 +38,8 @@ static void handle_input(void)
 
     if (IsKeyPressed(KEY_R)) {
         SeekMusicStream(music, 0.f);
-        PlayMusicStream(music);
+        PauseMusicStream(music);
+        fft_analyzer_reset(analyzer);
     }
 
     if (IsKeyPressed(KEY_RIGHT)) {
@@ -78,18 +84,53 @@ static size_t first_note_from(const MidiNoteList* notes, double t)
 
 Font lythian;
 
+static f32 fast_energy = 0.0f;
+static f32 slow_energy = 0.0f;
+
+f32 player_get_fast_energy(void) { return fast_energy; }
+f32 player_get_slow_energy(void) { return slow_energy; }
+
+static void audio_callback(void *buffer, unsigned int frames)
+{
+    f32 (*fs)[2] = buffer;
+    f32 sum_squares = 0.0f;
+
+    for (unsigned int i = 0; i < frames; ++i) {
+        f32 sample = fs[i][0];
+        fft_analyzer_push(analyzer, sample);
+        sum_squares += sample * sample;
+    }
+
+    if (frames > 0) {
+        f32 current_energy = sqrtf(sum_squares / frames);
+        
+        f32 alpha_fast = 0.05f;
+        fast_energy = fast_energy * (1.0f - alpha_fast) + current_energy * alpha_fast;
+
+        f32 alpha_slow = 0.0008f; 
+        slow_energy = slow_energy * (1.0f - alpha_slow) + current_energy * alpha_slow;
+    }
+}
+
+
 void lyla_init(void)
 {
-    Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
-    rori = LoadTextureFromImage(img);
-    UnloadImage(img);
-    // rori = LoadTexture("cover.png");
+    analyzer = fft_analyzer_create();
+    if (analyzer == NULL) {
+        TraceLog(LOG_ERROR, "Failed to allocate FFT Analyzer");
+        exit(69);
+    }
+
+    // Image img = LoadImageFromMemory(".png", __resources_rori_png, __resources_rori_png_len);
+    // rori = LoadTextureFromImage(img);
+    // UnloadImage(img);
+    rori = LoadTexture("cover.png");
 
     lythian = LoadFontFromMemory(".ttf", __resources_Lythian_ttf, __resources_Lythian_ttf_len, 32, NULL, 0);
 
     // TODO : Refactor this
     i32 buf_size;
-    u8* buf = LoadFileData("lurie.mid", &buf_size);
+    u8* buf = LoadFileData("song.mid", &buf_size);
 
     if (!midi_parse(&midi, buf, buf_size)) {
         exit(69);
@@ -101,20 +142,30 @@ void lyla_init(void)
 
     piano_roll_init(&s_roll, &midi, &tempo, &sig, &notes);
 
-    music = LoadMusicStream("lurie-ori.mp3");
+    music = LoadMusicStream("song.mp3");
     music.looping = false;
     PlayMusicStream(music);
+    PauseMusicStream(music);
+
+    AttachAudioStreamProcessor(music.stream, audio_callback);
 
     text_init();
+    visualizer_init();
     ui_background_init();
+
+    visualizer = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
 }
 
 void lyla_update(void)
 {
     u32 w  = GetScreenWidth();
     u32 h  = GetScreenHeight();
-    u32 dt = GetFrameTime();
-    UNUSED(dt);
+    f32 dt = GetFrameTime();
+
+    if (IsRenderTextureValid(visualizer)&& ((u32)visualizer.texture.width != w || (u32)visualizer.texture.height != h)) {
+        UnloadRenderTexture(visualizer);
+        visualizer = LoadRenderTexture(w, h);
+    }
 
     handle_input();
     UpdateMusicStream(music);
@@ -138,10 +189,55 @@ void lyla_update(void)
     midi_key_name(&key, key_text, sizeof key_text);
 
     midi_detect_chord(&notes, &chord, -1, now, now);
+    size_t m = fft_analyzer_analyze(analyzer, dt);
+    f32 beat = fft_analyzer_beat(analyzer);
 
     BeginDrawing(); {
         ClearBackground(BLANK);
         ui_background(w, h, &rori, true);
+        if (IsRenderTextureValid(visualizer))
+        {
+            BeginTextureMode(visualizer);
+                ClearBackground(BLANK);
+                static f32 quiet_time = 0.0f;
+                f32 fe   = player_get_fast_energy(), se = player_get_slow_energy();
+                f32 t    = now;
+                f32 du   = GetMusicTimeLength(music);
+                f32 prog = t/du;
+                bool quiet;
+                if (t < 15.0f || prog < 0.05f) {
+                    quiet = fe < 0.095f;
+                } else if (se < 0.005f) {
+                    quiet = fe < 0.01f;
+                } else if (prog > 0.98f) {
+                    quiet = fe < se*0.7f;
+                } else {
+                    quiet = fe < se*0.15f;
+                }
+
+                quiet_time = quiet ? quiet_time + dt : 0.0f;
+                bool detach = quiet_time > 0.4f;
+                visualizer_render(
+                    (Rectangle) {0, 0, w, h},
+                    fft_analyzer_smooth(analyzer),
+                    fft_analyzer_smear(analyzer),
+                    m, 
+                    detach, 
+                    beat, 
+                    dt
+                );
+            EndTextureMode();
+
+            DrawTexturePro(
+                visualizer.texture, 
+                RECT(0, 0, w, -((float)h)), 
+                RECT(0, 0, w, h), 
+                VEC2_ZERO, 
+                0.f, 
+                ColorAlpha(WHITE, 0.25)
+            );
+        }
+
         // ui_music_profile(w, h, &rori, "Lilith Introduction", "Lilith", "UnknownRori");
         ui_music_profile(w, h, &rori, "Lurie", "Solas na Gréine", "Rigël Theatre");
         ui_music_info(w, h, key_text, midi_bpm_at(&tempo, ticks) , now, pos.numerator, pos.denominator);
@@ -149,14 +245,16 @@ void lyla_update(void)
         ui_beat_info(w, h, &pos);
         piano_roll_draw(&s_roll, roll, now);
 
-        text_draw("UnknownRori's Softwork", 0, h - 16, 12, GRAY);
+        text_draw("UnknownRori's Softwork", 0, 0, 12, GRAY);
 
     }; EndDrawing();
 }
 
 void lyla_shutdown(void)
 {
+    visualizer_shutdown();
     ui_background_shutdown();
+    fft_analyzer_destroy(analyzer);
 }
 
 
