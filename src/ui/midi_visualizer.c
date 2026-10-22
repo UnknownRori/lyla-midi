@@ -3,20 +3,79 @@
 #include "text.h"
 #include <math.h>
 
-static float piano_roll_x(double tick, double from, double to, float left, float right)
+#define PIANO_ROLL_MAX_GLOW  256
+#define PIANO_ROLL_DRUM_ROWS 4
+#define PIANO_ROLL_DRUM_LIFE 0.45f
+#define PIANO_ROLL_KICK_LIFE 0.70f
+
+typedef enum PianoRollDrumRow {
+    PIANO_ROLL_DRUM_KICK,
+    PIANO_ROLL_DRUM_SNARE,
+    PIANO_ROLL_DRUM_TOM,
+    PIANO_ROLL_DRUM_HAT,
+} PianoRollDrumRow;
+
+typedef struct PianoRollGlow {
+    float x, y, height;
+    Color color;
+    float intensity;
+} PianoRollGlow;
+
+typedef struct PianoRollPage {
+    double start_tick;
+    double end_tick;
+    double start_sec;
+    double end_sec;
+    bool   is_trail;
+} PianoRollPage;
+
+typedef struct PianoRollView {
+    const PianoRoll* piano_roll;
+    unsigned         fx;
+    double           now;
+    double           playhead_tick;
+    float            scale;
+    float            left_x, right_x, playhead_x;
+    float            area_top, area_bottom;
+    float            ruler_y, playhead_top;
+    float            pitch_bottom;
+    float            drum_lane_height, drum_row_height;
+    float            key_slot, note_thickness;
+    float            head_width, tail_spread;
+    float            kick_flash, kick_spread;
+    double           ticks_per_pixel;
+    double           head_ticks;
+    double           tail_life_ticks, tail_delay_ticks, tail_decay_ticks;
+    double           oldest_visible_tick;
+    double           cell_width_ticks, cell_pitch_ticks;
+    PianoRollGlow    glows[PIANO_ROLL_MAX_GLOW];
+    int              glow_count;
+} PianoRollView;
+
+static float piano_roll_x(double tick, double from_tick, double to_tick, float left_x, float right_x)
 {
-    return left + (float)((tick - from) / (to - from)) * (right - left);
+    return left_x + (float)((tick - from_tick) / (to_tick - from_tick)) * (right_x - left_x);
 }
 
-static size_t piano_roll_first_note(const MidiNoteList* notes, double t)
+static float piano_roll_page_x(const PianoRollView* view, const PianoRollPage* page, double tick)
 {
-    size_t lo = 0, hi = notes->count;
-    while (lo < hi) {
-        size_t mid = (lo + hi) / 2;
-        if (notes->items[mid].start < t) lo = mid + 1;
-        else                             hi = mid;
+    return piano_roll_x(tick, page->start_tick, page->end_tick, view->left_x, view->right_x);
+}
+
+static size_t piano_roll_first_note(const MidiNoteList* notes, double start_sec)
+{
+    size_t low = 0, high = notes->count;
+    while (low < high) {
+        size_t middle = (low + high) / 2;
+        if (notes->items[middle].start < start_sec) low = middle + 1;
+        else                                        high = middle;
     }
-    return lo;
+    return low;
+}
+
+static float piano_roll_ease_out(float progress)
+{
+    return 1.0f - (1.0f - progress) * (1.0f - progress);
 }
 
 static Color piano_roll_color(int channel)
@@ -32,312 +91,486 @@ static Color piano_roll_color(int channel)
     };
 }
 
-#define PIANO_ROLL_MAX_GLOW 256
-
-typedef struct PianoRollGlow {
-    float x, y, h;
-    Color c;
-    float intensity;
-} PianoRollGlow;
-
 static Color piano_roll_glow_color(int channel)
 {
     if (channel == 9) return WHITE;
     return ColorFromHSV(fmodf(channel * 137.5f, 360.0f), 0.7f, 1.0f);
 }
 
-static Color piano_roll_lerp(Color a, Color b, float t)
+static Color piano_roll_lerp(Color from, Color to, float amount)
 {
     return (Color){
-        (unsigned char)(a.r + (b.r - a.r) * t),
-        (unsigned char)(a.g + (b.g - a.g) * t),
-        (unsigned char)(a.b + (b.b - a.b) * t),
+        (unsigned char)(from.r + (to.r - from.r) * amount),
+        (unsigned char)(from.g + (to.g - from.g) * amount),
+        (unsigned char)(from.b + (to.b - from.b) * amount),
         255
     };
 }
 
-static float piano_roll_hash(uint32_t a, uint32_t b)
+static float piano_roll_hash(uint32_t seed_a, uint32_t seed_b)
 {
-    uint32_t h = (a * 0x9E3779B1u) ^ ((b + 0x7F4A7C15u) * 0x85EBCA6Bu);
-    h ^= h >> 15;
-    h *= 0x2C1B3C6Du;
-    h ^= h >> 12;
-    return (float)(h & 0xFFFF) / 32767.5f - 1.0f;
+    uint32_t hash = (seed_a * 0x9E3779B1u) ^ ((seed_b + 0x7F4A7C15u) * 0x85EBCA6Bu);
+    hash ^= hash >> 15;
+    hash *= 0x2C1B3C6Du;
+    hash ^= hash >> 12;
+    return (float)(hash & 0xFFFF) / 32767.5f - 1.0f;
+}
+
+static PianoRollDrumRow piano_roll_drum_row(int key)
+{
+    switch (key) {
+        case 35: case 36:
+            return PIANO_ROLL_DRUM_KICK;
+        case 37: case 38: case 39: case 40:
+            return PIANO_ROLL_DRUM_SNARE;
+        case 41: case 43: case 45: case 47: case 48: case 50:
+            return PIANO_ROLL_DRUM_TOM;
+        default:
+            return PIANO_ROLL_DRUM_HAT;
+    }
+}
+
+static Color piano_roll_drum_color(PianoRollDrumRow row)
+{
+    switch (row) {
+        case PIANO_ROLL_DRUM_KICK:  return (Color){ 255, 120,  80, 255 };
+        case PIANO_ROLL_DRUM_SNARE: return (Color){ 255, 214, 120, 255 };
+        case PIANO_ROLL_DRUM_TOM:   return (Color){ 120, 200, 255, 255 };
+        default:                    return (Color){ 190, 255, 225, 255 };
+    }
 }
 
 static bool piano_roll_last_kick(const MidiNoteList* notes, double now, double* age, float* velocity)
 {
-    for (size_t i = piano_roll_first_note(notes, now + 1e-9); i > 0; i--) {
-        const MidiNote* n = &notes->items[i - 1];
-        if (now - n->start > 0.5) break;
-        if (n->channel == 9 && (n->key == 35 || n->key == 36)) {
-            *age      = now - n->start;
-            *velocity = n->velocity;
+    for (size_t note_index = piano_roll_first_note(notes, now + 1e-9); note_index > 0; note_index--) {
+        const MidiNote* note = &notes->items[note_index - 1];
+        if (now - note->start > 0.5) break;
+        if (note->channel == 9 && (note->key == 35 || note->key == 36)) {
+            *age      = now - note->start;
+            *velocity = note->velocity;
             return true;
         }
     }
     return false;
 }
 
-void piano_roll_init(PianoRoll* r, const Midi* midi, const MidiTempoMap* tempo, const MidiTimeSigMap* sig, const MidiNoteList* notes)
+void piano_roll_init(PianoRoll* piano_roll, const Midi* midi, const MidiTempoMap* tempo, const MidiTimeSigMap* sig, const MidiNoteList* notes)
 {
-    r->midi          = midi;
-    r->tempo         = tempo;
-    r->sig           = sig;
-    r->notes         = notes;
-    r->bars_per_page = 2;
-    r->max_len       = 0.0;
-    r->clock         = 0.0;
+    piano_roll->midi          = midi;
+    piano_roll->tempo         = tempo;
+    piano_roll->sig           = sig;
+    piano_roll->notes         = notes;
+    piano_roll->bars_per_page = 2;
+    piano_roll->max_len       = 0.0;
+    piano_roll->clock         = 0.0;
 
-    int lo = 127, hi = 0;
-    da_foreach(MidiNote, n, notes) {
-        if (n->end - n->start > r->max_len) r->max_len = n->end - n->start;
-        if (n->channel == 9) continue;
-        if (n->key < lo) lo = n->key;
-        if (n->key > hi) hi = n->key;
+    int lowest_key = 127, highest_key = 0;
+    da_foreach(MidiNote, note, notes) {
+        if (note->end - note->start > piano_roll->max_len) piano_roll->max_len = note->end - note->start;
+        if (note->channel == 9) continue;
+        if (note->key < lowest_key)  lowest_key  = note->key;
+        if (note->key > highest_key) highest_key = note->key;
     }
-    if (lo > hi) { lo = 48; hi = 84; }
-    lo -= 1;
-    hi += 1;
-    while (hi - lo < 24) { lo--; hi++; }
-    r->low_key  = lo < 0 ? 0 : lo;
-    r->high_key = hi > 127 ? 127 : hi;
+    if (lowest_key > highest_key) { lowest_key = 48; highest_key = 84; }
+    lowest_key  -= 1;
+    highest_key += 1;
+    while (highest_key - lowest_key < 24) { lowest_key--; highest_key++; }
+    piano_roll->low_key  = lowest_key < 0 ? 0 : lowest_key;
+    piano_roll->high_key = highest_key > 127 ? 127 : highest_key;
 }
 
-double piano_roll_time(PianoRoll* r, double audio, double dt, bool playing)
+double piano_roll_time(PianoRoll* piano_roll, double audio_sec, double delta_sec, bool playing)
 {
     if (!playing) {
-        r->clock = audio;
-        return r->clock;
+        piano_roll->clock = audio_sec;
+        return piano_roll->clock;
     }
-    r->clock += dt;
-    double err = audio - r->clock;
-    if (fabs(err) > 0.05) r->clock = audio;
-    else                  r->clock += err * 0.1;
-    return r->clock;
+    piano_roll->clock += delta_sec;
+    double error = audio_sec - piano_roll->clock;
+    if (fabs(error) > 0.05) piano_roll->clock = audio_sec;
+    else                    piano_roll->clock += error * 0.1;
+    return piano_roll->clock;
 }
 
-void piano_roll_draw_fx(const PianoRoll* r, Rectangle roll, double now, unsigned fx)
+static void piano_roll_draw_page_notes(PianoRollView* view, const PianoRollPage* page)
 {
-    const float sc          = GetScreenHeight() / 1080.0f;
-    const float left        = roll.x, right = roll.x + roll.width;
-    const float lane_h      = 26 * sc;
-    const float ruler_y     = roll.y - 8 * sc;
-    const float notes_top   = roll.y;
-    const float notes_bot   = roll.y + roll.height - lane_h;
-    const float drum_y      = roll.y + roll.height - lane_h / 2;
-    const float roll_bottom = roll.y + roll.height;
+    const PianoRoll* piano_roll = view->piano_roll;
+    const float      scale      = view->scale;
+    const float      clip_x     = page->is_trail ? view->playhead_x : -1e9f;
+    const double     first_sec  = page->is_trail ? fmax(page->start_sec, view->now - PIANO_ROLL_TAIL_LIFE) : page->start_sec;
+    const double     last_sec   = page->is_trail ? page->end_sec : view->now;
 
-    int bars = r->bars_per_page;
-    if (bars < 1) bars = 1;
-    if (bars > PIANO_ROLL_MAX_BARS) bars = PIANO_ROLL_MAX_BARS;
+    for (size_t note_index = piano_roll_first_note(piano_roll->notes, first_sec - piano_roll->max_len);
+         note_index < piano_roll->notes->count; note_index++) {
+        const MidiNote* note = &piano_roll->notes->items[note_index];
+        if (note->start > last_sec) break;
+        if (note->channel == 9) continue;
+        if (note->key < piano_roll->low_key || note->key > piano_roll->high_key) continue;
 
-    double       ticks = midi_seconds_to_ticks(r->midi, r->tempo, now);
-    MidiPosition pos;
-    midi_ticks_to_position(r->midi, r->sig, &pos, ticks);
+        double note_start_tick = midi_seconds_to_ticks(piano_roll->midi, piano_roll->tempo, note->start);
+        double note_end_tick   = midi_seconds_to_ticks(piano_roll->midi, piano_roll->tempo, note->end);
+        if (note_start_tick < page->start_tick && note_end_tick <= page->start_tick) continue;
+        if (note_start_tick >= page->end_tick) continue;
 
-    MidiBar page[PIANO_ROLL_MAX_BARS];
-    midi_bar_at(r->midi, r->sig, &page[0], ticks);
-    const MidiBar current   = page[0];
-    const uint32_t into_page = (pos.bar - 1) % (uint32_t)bars;
-    for (uint32_t k = into_page; k > 0 && page[0].start_tick > 0; k--)
-        midi_bar_at(r->midi, r->sig, &page[0], page[0].start_tick - 1);
-    for (int i = 1; i < bars; i++)
-        midi_bar_at(r->midi, r->sig, &page[i], page[i - 1].start_tick + page[i - 1].length_ticks);
-    const double span_start = page[0].start_tick;
-    const double span_end   = (double)page[bars - 1].start_tick + page[bars - 1].length_ticks;
-    const double span_start_sec = midi_tick_to_seconds(r->midi, r->tempo, page[0].start_tick);
+        double visible_start_tick = note_start_tick < page->start_tick ? page->start_tick : note_start_tick;
+        double visible_end_tick   = note_end_tick < view->playhead_tick ? note_end_tick : view->playhead_tick;
+        if (page->is_trail && visible_end_tick > page->end_tick) visible_end_tick = page->end_tick;
+        if (page->is_trail && visible_end_tick <= view->oldest_visible_tick) continue;
+        bool is_active = !page->is_trail && view->playhead_tick < note_end_tick;
 
-    DrawRectangleRec(roll, ColorAlpha(BLACK, 0.25));
+        float       note_left_x  = piano_roll_page_x(view, page, visible_start_tick);
+        float       note_right_x = piano_roll_page_x(view, page, visible_end_tick);
+        if (note_right_x <= clip_x) continue;
+        float       head_x       = note_right_x;
+        float       center_y     = view->pitch_bottom - ((float)(note->key - piano_roll->low_key) + 0.5f) * view->key_slot;
+        Color       note_color   = piano_roll_color(note->channel);
+        Color       bright_color = piano_roll_glow_color(note->channel);
+        const float thickness    = view->note_thickness;
 
-    const Color faint = { 255, 255, 255, 20 };
-    DrawLineEx((Vector2){ left, ruler_y }, (Vector2){ right, ruler_y }, 1.0f, (Color){ 255, 255, 255, 45 });
-    for (int bi = 0; bi < bars; bi++) {
-        const MidiBar* pb     = &page[bi];
-        const uint32_t pb_end = pb->start_tick + pb->length_ticks;
-        for (uint32_t tk = pb->start_tick; tk < pb_end; tk += pb->beat_ticks) {
-            float x         = piano_roll_x(tk, span_start, span_end, left, right);
-            bool  bar_start = (tk == pb->start_tick);
-            DrawLineEx((Vector2){ x, ruler_y - (bar_start ? 8 : 4) * sc }, (Vector2){ x, ruler_y }, 1.0f,
-                       (Color){ 255, 255, 255, bar_start ? 120 : 70 });
-            if (bar_start && bi > 0) DrawLineEx((Vector2){ x, notes_top }, (Vector2){ x, roll_bottom }, 1.0f, (Color){ 255, 255, 255, 48 });
-            else if (!bar_start)     DrawLineEx((Vector2){ x, notes_top }, (Vector2){ x, roll_bottom }, 1.0f, faint);
-            for (int q = 1; q < 4; q++) {
-                double qt = (double)tk + (double)pb->beat_ticks * q / 4.0;
-                if (qt < (double)pb_end) {
-                    float qx = piano_roll_x(qt, span_start, span_end, left, right);
-                    DrawLineEx((Vector2){ qx, ruler_y - 2 * sc }, (Vector2){ qx, ruler_y }, 1.0f, (Color){ 255, 255, 255, 35 });
+        if (view->fx & PIANO_ROLL_FX_TAIL) {
+            const double solid_from_tick  = view->playhead_tick - view->tail_delay_ticks;
+            const double solid_start_tick = visible_start_tick > solid_from_tick ? visible_start_tick : solid_from_tick;
+            if (visible_end_tick > solid_start_tick) {
+                float age_left    = (float)((view->playhead_tick - solid_start_tick) / view->tail_life_ticks);
+                float age_right   = (float)((view->playhead_tick - visible_end_tick) / view->tail_life_ticks);
+                int   solid_x     = (int)roundf(fmaxf(clip_x, piano_roll_page_x(view, page, solid_start_tick)));
+                int   solid_width = (int)roundf(note_right_x) - solid_x;
+                if (solid_width < 1 && !page->is_trail) solid_width = 1;
+                if (solid_width >= 1) {
+                    DrawRectangleGradientH(solid_x, (int)roundf(center_y - thickness / 2), solid_width, (int)fmaxf(1.0f, roundf(thickness)),
+                                           Fade(piano_roll_lerp(bright_color, note_color, fminf(1.0f, age_left * 2.0f)), 0.9f),
+                                           Fade(piano_roll_lerp(bright_color, note_color, fminf(1.0f, age_right * 2.0f)), 0.9f));
                 }
             }
-        }
-        text_draw(TextFormat("%u", pos.bar - into_page + (uint32_t)bi),
-                 (int)(piano_roll_x(pb->start_tick, span_start, span_end, left, right) + 6 * sc),
-                 (int)(roll.y + 4 * sc), (int)fmaxf(10.0f, 14 * sc), (Color){ 128, 148, 165, 200 });
-    }
-    const float px = piano_roll_x(ticks, span_start, span_end, left, right);
-    DrawRectangleGradientH(left, ruler_y, px - left, 2., BLANK, WHITE);
 
-    const int   n_keys = r->high_key - r->low_key + 1;
-    const float slot   = (notes_bot - notes_top) / (float)n_keys;
-    float thick = slot * 0.6f;
-    if (thick > 9 * sc) thick = 9 * sc;
-    if (thick < 2 * sc) thick = 2 * sc;
-    const double head_ticks = current.beat_ticks / 2.0;
+            const double cell_start_limit = visible_start_tick > view->oldest_visible_tick ? visible_start_tick : view->oldest_visible_tick;
+            const double cell_end_limit   = visible_end_tick < solid_from_tick ? visible_end_tick : solid_from_tick;
+            if (cell_end_limit > cell_start_limit && view->cell_pitch_ticks > 1e-9 && view->tail_decay_ticks > 1e-9) {
+                long cell_index = (long)floor((cell_start_limit - note_start_tick) / view->cell_pitch_ticks);
+                if (cell_index < 0) cell_index = 0;
+                for (int count = 0; count < 512; count++, cell_index++) {
+                    double cell_start_tick = note_start_tick + cell_index * view->cell_pitch_ticks;
+                    if (cell_start_tick >= cell_end_limit) break;
+                    double from_tick = cell_start_tick < cell_start_limit ? cell_start_limit : cell_start_tick;
+                    double to_tick   = cell_start_tick + view->cell_width_ticks > cell_end_limit ? cell_end_limit : cell_start_tick + view->cell_width_ticks;
+                    if (to_tick <= from_tick) continue;
+                    double middle_tick = (from_tick + to_tick) / 2;
+                    float  decay       = (float)((view->playhead_tick - middle_tick - view->tail_delay_ticks) / view->tail_decay_ticks);
+                    if (decay >= 1.0f) continue;
+                    if (decay < 0.0f) decay = 0.0f;
 
-    const double           tpp          = (span_end - span_start) / (double)(right - left);
-    const MidiTempo*       tempo_now    = midi_tempo_at(r->tempo, ticks);
-    const double           us_quarter   = tempo_now->us_per_quarter ? tempo_now->us_per_quarter : 500000.0;
-    const double           window_ticks = PIANO_ROLL_TAIL_LIFE * r->midi->division * 1e6 / us_quarter;
-    const double           delay_ticks  = fmin(PIANO_ROLL_TAIL_DELAY * r->midi->division * 1e6 / us_quarter, window_ticks * 0.9);
-    const double           decay_ticks  = window_ticks - delay_ticks;
-    const double           oldest       = ticks - window_ticks;
-    const float            spread       = PIANO_ROLL_TAIL_SPREAD;
-    const double           cell_ticks   = 6 * sc * tpp;
-    const double           pitch_ticks  = 8 * sc * tpp;
-    const float            head_w       = 7 * sc;
-    PianoRollGlow          glow[PIANO_ROLL_MAX_GLOW];
-    int                    n_glow       = 0;
+                    uint32_t note_seed = (uint32_t)note_index, cell_seed = (uint32_t)cell_index * 4u;
+                    float random_y = piano_roll_hash(note_seed, cell_seed + 0u);
+                    float random_x = piano_roll_hash(note_seed, cell_seed + 1u);
+                    float random_w = piano_roll_hash(note_seed, cell_seed + 2u);
+                    float random_h = piano_roll_hash(note_seed, cell_seed + 3u);
 
-    for (size_t i = piano_roll_first_note(r->notes, span_start_sec - r->max_len); i < r->notes->count; i++) {
-        const MidiNote* n = &r->notes->items[i];
-        if (n->start > now) break;
-
-        double n_start = midi_seconds_to_ticks(r->midi, r->tempo, n->start);
-        double n_end   = midi_seconds_to_ticks(r->midi, r->tempo, n->end);
-        if (n_start < span_start && n_end <= span_start) continue;
-
-        double vis_start = n_start < span_start ? span_start : n_start;
-        double vis_end   = n_end < ticks ? n_end : ticks;
-        bool   active    = ticks < n_end;
-        Color  c         = piano_roll_color(n->channel);
-
-        if (n->channel == 9) {
-            if (n_start < span_start) continue;
-            bool  flash = (now - n->start) < 0.08;
-            float x = piano_roll_x(vis_start, span_start, span_end, left, right), s = 5 * sc;
-            DrawRectanglePro((Rectangle){ x, drum_y, s, s }, (Vector2){ s / 2, s / 2 }, 45, flash ? WHITE : Fade(c, 0.7f));
-            continue;
-        }
-        if (n->key < r->low_key || n->key > r->high_key) continue;
-
-        float x1     = piano_roll_x(vis_start, span_start, span_end, left, right);
-        float x2     = piano_roll_x(vis_end,   span_start, span_end, left, right);
-        float hx     = x2;
-        float yc     = notes_bot - ((float)(n->key - r->low_key) + 0.5f) * slot;
-        Color bright = piano_roll_glow_color(n->channel);
-
-        if (fx & PIANO_ROLL_FX_TAIL) {
-            const double hold_from = ticks - delay_ticks;
-            const double solid_lo  = vis_start > hold_from ? vis_start : hold_from;
-            if (vis_end > solid_lo) {
-                float age_l = (float)((ticks - solid_lo) / window_ticks);
-                float age_r = (float)((ticks - vis_end) / window_ticks);
-                int   gx    = (int)roundf(piano_roll_x(solid_lo, span_start, span_end, left, right));
-                int   gw    = (int)roundf(x2) - gx;
-                if (gw < 1) gw = 1;
-                DrawRectangleGradientH(gx, (int)roundf(yc - thick / 2), gw, (int)fmaxf(1.0f, roundf(thick)),
-                                       Fade(piano_roll_lerp(bright, c, fminf(1.0f, age_l * 2.0f)), 0.9f),
-                                       Fade(piano_roll_lerp(bright, c, fminf(1.0f, age_r * 2.0f)), 0.9f));
-            }
-
-            const double lo      = vis_start > oldest ? vis_start : oldest;
-            const double cell_hi = vis_end < hold_from ? vis_end : hold_from;
-            if (cell_hi > lo && pitch_ticks > 1e-9 && decay_ticks > 1e-9) {
-                long k = (long)floor((lo - n_start) / pitch_ticks);
-                if (k < 0) k = 0;
-                for (int count = 0; count < 512; count++, k++) {
-                    double c0 = n_start + k * pitch_ticks;
-                    if (c0 >= cell_hi) break;
-                    double a = c0 < lo ? lo : c0;
-                    double b = c0 + cell_ticks > cell_hi ? cell_hi : c0 + cell_ticks;
-                    if (b <= a) continue;
-                    float f = (float)((ticks - (a + b) / 2 - delay_ticks) / decay_ticks);
-                    if (f >= 1.0f) continue;
-                    if (f < 0.0f) f = 0.0f;
-
-                    uint32_t ci = (uint32_t)i, ck = (uint32_t)k * 4u;
-                    float h_y = piano_roll_hash(ci, ck + 0u);
-                    float h_x = piano_roll_hash(ci, ck + 1u);
-                    float h_w = piano_roll_hash(ci, ck + 2u);
-                    float h_h = piano_roll_hash(ci, ck + 3u);
-
-                    float vary = fminf(1.0f, f * 3.0f);
-                    float cw = (float)((b - a) / tpp) * (1.0f - 0.45f * f) * (1.0f + 0.30f * spread * vary * h_w);
-                    float ch = thick * (1.0f - 0.75f * f) * (1.0f + 0.25f * spread * vary * h_h);
-                    if (cw < sc) cw = sc;
-                    if (ch < sc) ch = sc;
-                    float cx = piano_roll_x((a + b) / 2, span_start, span_end, left, right)
-                             + (-0.55f + 0.45f * h_x) * 16 * sc * spread * f;
-                    float cy = yc + h_y * thick * spread * f;
-                    if (cy - ch / 2 < notes_top) cy = notes_top + ch / 2;
-                    if (cy + ch / 2 > notes_bot) cy = notes_bot - ch / 2;
-                    float u  = (float)((ticks - (a + b) / 2) / window_ticks);
-                    Color cc = piano_roll_lerp(bright, c, fminf(1.0f, u * 2.0f));
-                    DrawRectangleRec((Rectangle){ cx - cw / 2, cy - ch / 2, cw, ch },
-                                     Fade(cc, powf(1.0f - f, 1.4f) * 0.9f * (1.0f - 0.15f * spread * vary * (h_w + 1.0f) / 2.0f)));
+                    float variation   = fminf(1.0f, decay * 3.0f);
+                    float cell_width  = (float)((to_tick - from_tick) / view->ticks_per_pixel) * (1.0f - 0.45f * decay) * (1.0f + 0.30f * view->tail_spread * variation * random_w);
+                    float cell_height = thickness * (1.0f - 0.75f * decay) * (1.0f + 0.25f * view->tail_spread * variation * random_h);
+                    if (cell_width < scale)  cell_width  = scale;
+                    if (cell_height < scale) cell_height = scale;
+                    float cell_center_x = piano_roll_page_x(view, page, middle_tick)
+                                        + (-0.55f + 0.45f * random_x) * 16 * scale * view->tail_spread * decay;
+                    if (cell_center_x <= clip_x) continue;
+                    float cell_center_y = center_y + random_y * thickness * view->tail_spread * decay;
+                    if (cell_center_y - cell_height / 2 < view->area_top)      cell_center_y = view->area_top + cell_height / 2;
+                    if (cell_center_y + cell_height / 2 > view->pitch_bottom)  cell_center_y = view->pitch_bottom - cell_height / 2;
+                    float age_ratio  = (float)((view->playhead_tick - middle_tick) / view->tail_life_ticks);
+                    Color cell_color = piano_roll_lerp(bright_color, note_color, fminf(1.0f, age_ratio * 2.0f));
+                    DrawRectangleRec((Rectangle){ cell_center_x - cell_width / 2, cell_center_y - cell_height / 2, cell_width, cell_height },
+                                     Fade(cell_color, powf(1.0f - decay, 1.4f) * 0.9f * (1.0f - 0.15f * view->tail_spread * variation * (random_w + 1.0f) / 2.0f)));
                 }
             }
         } else {
-            if (x2 - x1 < 2 * sc) x2 = x1 + 2 * sc;
-            float xh = piano_roll_x(fmin(vis_start + head_ticks, vis_end), span_start, span_end, left, right);
-            if (xh < x1 + 2 * sc) xh = fminf(x1 + 2 * sc, x2);
-            float y0 = yc - thick / 2;
-            if (x2 > xh) DrawRectangleRec((Rectangle){ xh, y0, x2 - xh, thick }, Fade(c, active ? 0.78f : 0.5f));
-            DrawRectangleRec((Rectangle){ x1, y0, xh - x1, thick }, Fade(c, 0.96f));
+            if (note_right_x - note_left_x < 2 * scale) note_right_x = note_left_x + 2 * scale;
+            float attack_x = piano_roll_x(fmin(visible_start_tick + view->head_ticks, visible_end_tick), page->start_tick, page->end_tick, view->left_x, view->right_x);
+            if (attack_x < note_left_x + 2 * scale) attack_x = fminf(note_left_x + 2 * scale, note_right_x);
+            float top_y = center_y - thickness / 2;
+            if (note_right_x > attack_x) DrawRectangleRec((Rectangle){ attack_x, top_y, note_right_x - attack_x, thickness }, Fade(note_color, is_active ? 0.78f : 0.5f));
+            DrawRectangleRec((Rectangle){ note_left_x, top_y, attack_x - note_left_x, thickness }, Fade(note_color, 0.96f));
         }
 
-        if ((fx & PIANO_ROLL_FX_BLOOM) && active && n_glow < PIANO_ROLL_MAX_GLOW) {
-            float hl    = fminf(fmaxf(x1, hx - head_w), hx - 2 * sc);
-            float vel   = 0.35f + 0.65f * (n->velocity / 127.0f);
-            float onset = 1.0f + 1.6f * expf(-(float)(now - n->start) / 0.10f);
-            DrawRectangleRec((Rectangle){ hl, yc - thick * 0.65f, hx - hl, thick * 1.3f }, bright);
-            glow[n_glow++] = (PianoRollGlow){ hx, yc, thick, bright, vel * onset };
+        if ((view->fx & PIANO_ROLL_FX_BLOOM) && is_active && view->glow_count < PIANO_ROLL_MAX_GLOW) {
+            float head_left   = fminf(fmaxf(note_left_x, head_x - view->head_width), head_x - 2 * scale);
+            float velocity    = 0.35f + 0.65f * (note->velocity / 127.0f);
+            float onset_boost = 1.0f + 1.6f * expf(-(float)(view->now - note->start) / 0.10f);
+            DrawRectangleRec((Rectangle){ head_left, center_y - thickness * 0.65f, head_x - head_left, thickness * 1.3f }, bright_color);
+            view->glows[view->glow_count++] = (PianoRollGlow){ head_x, center_y, thickness, bright_color, velocity * onset_boost };
+        }
+    }
+}
+
+static void piano_roll_draw_page_drums(PianoRollView* view, const PianoRollPage* page)
+{
+    const PianoRoll* piano_roll = view->piano_roll;
+    const float      scale      = view->scale;
+    const bool       has_lanes  = (view->fx & PIANO_ROLL_FX_DRUMS) != 0;
+    const double     first_sec  = has_lanes ? fmax(page->start_sec, view->now - PIANO_ROLL_KICK_LIFE) : page->start_sec;
+    const double     last_sec   = page->is_trail ? page->end_sec : view->now;
+
+    for (size_t note_index = piano_roll_first_note(piano_roll->notes, first_sec); note_index < piano_roll->notes->count; note_index++) {
+        const MidiNote* note = &piano_roll->notes->items[note_index];
+        if (note->start > last_sec) break;
+        if (note->channel != 9) continue;
+
+        double hit_tick = midi_seconds_to_ticks(piano_roll->midi, piano_roll->tempo, note->start);
+        if (hit_tick < page->start_tick || hit_tick >= page->end_tick) continue;
+        float hit_x = piano_roll_page_x(view, page, hit_tick);
+        if (page->is_trail && hit_x <= view->playhead_x) continue;
+        float age = (float)(view->now - note->start);
+
+        if (!has_lanes) {
+            float marker_size = 5 * scale;
+            float marker_y    = view->area_bottom - view->drum_lane_height / 2;
+            DrawRectanglePro((Rectangle){ hit_x, marker_y, marker_size, marker_size }, (Vector2){ marker_size / 2, marker_size / 2 }, 45,
+                             age < 0.08f ? WHITE : Fade(piano_roll_color(9), 0.7f));
+            continue;
+        }
+
+        PianoRollDrumRow row  = piano_roll_drum_row(note->key);
+        float            life = row == PIANO_ROLL_DRUM_KICK ? PIANO_ROLL_KICK_LIFE : PIANO_ROLL_DRUM_LIFE;
+        if (age >= life) continue;
+
+        float progress      = age / life;
+        float base_y        = view->area_bottom - ((float)row + 0.5f) * view->drum_row_height;
+        float rise_distance = row == PIANO_ROLL_DRUM_KICK ? view->drum_lane_height : view->drum_row_height * 0.9f;
+        float marker_y      = base_y - piano_roll_ease_out(progress) * rise_distance;
+        float marker_size   = (row == PIANO_ROLL_DRUM_KICK ? 9.0f : 5.0f) * scale * (1.0f - 0.35f * progress);
+        float alpha         = powf(1.0f - progress, 1.3f);
+        Color drum_color    = piano_roll_drum_color(row);
+
+        if (row == PIANO_ROLL_DRUM_KICK) {
+            float streak_height = base_y - marker_y + marker_size;
+            DrawRectangleGradientV((int)(hit_x - 1.5f * scale), (int)marker_y, (int)fmaxf(1.0f, 3.0f * scale), (int)fmaxf(1.0f, streak_height),
+                                   Fade(drum_color, alpha * 0.7f), Fade(drum_color, 0.0f));
+        }
+        DrawRectanglePro((Rectangle){ hit_x, marker_y, marker_size, marker_size }, (Vector2){ marker_size / 2, marker_size / 2 }, 45,
+                         age < 0.08f ? WHITE : Fade(drum_color, alpha));
+    }
+}
+
+static void piano_roll_draw_neon_edge(const PianoRollView* view, float edge_x, bool is_left)
+{
+    const float scale    = view->scale;
+    const float center_y = (view->area_top + view->area_bottom) / 2;
+    const float half_len = view->kick_spread * (view->area_bottom - view->area_top) / 2;
+    const float flash    = view->kick_flash;
+
+    BeginBlendMode(BLEND_ADDITIVE);
+
+    const Color base_neon_color = { 190, 220, 255, 255 };
+
+    const float line_width = (1.5f + 3.0f * flash) * scale;
+    const int   glow_width = (int)((8 + 26 * flash) * scale);
+
+    const float top_y  = center_y - half_len;
+    const float height = half_len * 2.0f;
+
+    Color line_color = base_neon_color;
+    line_color.a = (unsigned char)(40 + 215 * flash);
+
+    DrawLineEx(
+        (Vector2){ edge_x, top_y }, 
+        (Vector2){ edge_x, top_y + height }, 
+        line_width, 
+        line_color
+    );
+
+    Color glow_color = base_neon_color;
+    glow_color.a = (unsigned char)(140 * flash);
+
+    Color transparent_color = base_neon_color;
+    transparent_color.a = 0;
+
+    if (is_left) {
+        DrawRectangleGradientH(
+            (int)edge_x, (int)top_y, glow_width, (int)height,
+            glow_color, 
+            transparent_color
+        );
+    } else {
+        DrawRectangleGradientH(
+            (int)edge_x - glow_width, (int)top_y, glow_width, (int)height,
+            transparent_color, 
+            glow_color
+        );
+    }
+
+    EndBlendMode();
+}
+
+static void piano_roll_draw_playhead_flash(const PianoRollView* view)
+{
+    const float flash = view->kick_flash;
+    if (flash <= 0.002f) return;
+
+    const float scale    = view->scale;
+    const float height   = view->area_bottom - view->playhead_top;
+    const float glow_w   = (8.0f + 26.0f * flash) * scale;
+    const Color neon     = { 190, 220, 255, 255 };
+    const Color clear    = { 190, 220, 255, 0 };
+    DrawRectangleGradientH((int)view->playhead_x, (int)view->playhead_top, (int)glow_w, (int)height, Fade(neon, 0.55f * flash), clear);
+    DrawRectangleGradientH((int)(view->playhead_x - glow_w), (int)view->playhead_top, (int)glow_w, (int)height, clear, Fade(neon, 0.55f * flash));
+    DrawLineEx((Vector2){ view->playhead_x, view->playhead_top }, (Vector2){ view->playhead_x, view->area_bottom }, (3.0f + 6.0f * flash) * scale, Fade(neon, flash));
+}
+
+void piano_roll_draw_fx(const PianoRoll* piano_roll, Rectangle area, double now, unsigned fx)
+{
+    PianoRollView view = {0};
+    const float   scale          = GetScreenHeight() / 1080.0f;
+    const bool    has_drum_lanes = (fx & PIANO_ROLL_FX_DRUMS) != 0;
+
+    view.piano_roll       = piano_roll;
+    view.fx               = fx;
+    view.now              = now;
+    view.scale            = scale;
+    view.left_x           = area.x;
+    view.right_x          = area.x + area.width;
+    view.area_top         = area.y;
+    view.area_bottom      = area.y + area.height;
+    view.ruler_y          = area.y - 8 * scale;
+    view.playhead_top     = view.ruler_y - 8 * scale;
+    view.drum_lane_height = (has_drum_lanes ? 64.0f : 26.0f) * scale;
+    view.drum_row_height  = has_drum_lanes ? view.drum_lane_height / PIANO_ROLL_DRUM_ROWS : view.drum_lane_height;
+    view.pitch_bottom     = view.area_bottom - view.drum_lane_height;
+
+    int bars_per_page = piano_roll->bars_per_page;
+    if (bars_per_page < 1) bars_per_page = 1;
+    if (bars_per_page > PIANO_ROLL_MAX_BARS) bars_per_page = PIANO_ROLL_MAX_BARS;
+
+    view.playhead_tick = midi_seconds_to_ticks(piano_roll->midi, piano_roll->tempo, now);
+    MidiPosition position;
+    midi_ticks_to_position(piano_roll->midi, piano_roll->sig, &position, view.playhead_tick);
+
+    MidiBar page_bars[PIANO_ROLL_MAX_BARS];
+    midi_bar_at(piano_roll->midi, piano_roll->sig, &page_bars[0], view.playhead_tick);
+    const MidiBar  current_bar = page_bars[0];
+    const uint32_t bar_in_page = (position.bar - 1) % (uint32_t)bars_per_page;
+    for (uint32_t step = bar_in_page; step > 0 && page_bars[0].start_tick > 0; step--)
+        midi_bar_at(piano_roll->midi, piano_roll->sig, &page_bars[0], page_bars[0].start_tick - 1);
+    for (int bar_index = 1; bar_index < bars_per_page; bar_index++)
+        midi_bar_at(piano_roll->midi, piano_roll->sig, &page_bars[bar_index],
+                    page_bars[bar_index - 1].start_tick + page_bars[bar_index - 1].length_ticks);
+
+    PianoRollPage page = {0};
+    page.start_tick = page_bars[0].start_tick;
+    page.end_tick   = (double)page_bars[bars_per_page - 1].start_tick + page_bars[bars_per_page - 1].length_ticks;
+    page.start_sec  = midi_tick_to_seconds(piano_roll->midi, piano_roll->tempo, page_bars[0].start_tick);
+    page.end_sec    = midi_tick_to_seconds(piano_roll->midi, piano_roll->tempo, (uint32_t)page.end_tick);
+    view.playhead_x = piano_roll_page_x(&view, &page, view.playhead_tick);
+
+    PianoRollPage trail_page = {0};
+    bool          has_trail  = false;
+    if ((fx & PIANO_ROLL_FX_TRAIL) && page.start_tick > 0 && now - page.start_sec < fmax(PIANO_ROLL_TAIL_LIFE, PIANO_ROLL_KICK_LIFE)) {
+        MidiBar previous_bar = page_bars[0];
+        for (int step = 0; step < bars_per_page && previous_bar.start_tick > 0; step++)
+            midi_bar_at(piano_roll->midi, piano_roll->sig, &previous_bar, previous_bar.start_tick - 1);
+        trail_page.start_tick = previous_bar.start_tick;
+        trail_page.end_tick   = page.start_tick;
+        trail_page.start_sec  = midi_tick_to_seconds(piano_roll->midi, piano_roll->tempo, previous_bar.start_tick);
+        trail_page.end_sec    = page.start_sec;
+        trail_page.is_trail   = true;
+        has_trail             = trail_page.end_tick > trail_page.start_tick;
+    }
+
+    if (fx & PIANO_ROLL_FX_KICK) {
+        double kick_age = 0.0;
+        float  kick_velocity = 0.0f;
+        if (piano_roll_last_kick(piano_roll->notes, now, &kick_age, &kick_velocity)) {
+            view.kick_flash  = expf(-(float)kick_age / 0.14f) * (0.4f + 0.6f * kick_velocity / 127.0f);
+            view.kick_spread = 0.08f + 0.92f * piano_roll_ease_out(fminf(1.0f, (float)kick_age / 0.07f));
         }
     }
 
-    if (n_glow > 0 || (fx & PIANO_ROLL_FX_KICK)) {
-        BeginBlendMode(BLEND_ADDITIVE);
-        for (int g = 0; g < n_glow; g++) {
-            const PianoRollGlow* gl = &glow[g];
-            for (int layer = 0; layer < 3; layer++) {
-                float grow  = (3 + layer * 5) * sc;
-                float alpha = fminf(0.5f, 0.22f * gl->intensity / (1.0f + layer));
-                DrawRectangleRec((Rectangle){ gl->x - head_w - grow, gl->y - gl->h * 0.65f - grow,
-                                              head_w + grow * 2, gl->h * 1.3f + grow * 2 }, Fade(gl->c, alpha));
+    DrawRectangleRec(area, ColorAlpha(BLACK, 0.25));
+
+    const Color faint_grid_color = { 255, 255, 255, 20 };
+    DrawLineEx((Vector2){ view.left_x, view.ruler_y }, (Vector2){ view.right_x, view.ruler_y }, 1.0f, (Color){ 255, 255, 255, 45 });
+    for (int bar_index = 0; bar_index < bars_per_page; bar_index++) {
+        const MidiBar* bar          = &page_bars[bar_index];
+        const uint32_t bar_end_tick = bar->start_tick + bar->length_ticks;
+        for (uint32_t beat_tick = bar->start_tick; beat_tick < bar_end_tick; beat_tick += bar->beat_ticks) {
+            float beat_x       = piano_roll_page_x(&view, &page, beat_tick);
+            bool  is_bar_start = (beat_tick == bar->start_tick);
+            DrawLineEx((Vector2){ beat_x, view.ruler_y - (is_bar_start ? 8 : 4) * scale }, (Vector2){ beat_x, view.ruler_y }, 1.0f,
+                       (Color){ 255, 255, 255, is_bar_start ? 120 : 70 });
+            if (is_bar_start && bar_index > 0) DrawLineEx((Vector2){ beat_x, view.area_top }, (Vector2){ beat_x, view.area_bottom }, 1.0f, (Color){ 255, 255, 255, 48 });
+            else if (!is_bar_start)            DrawLineEx((Vector2){ beat_x, view.area_top }, (Vector2){ beat_x, view.area_bottom }, 1.0f, faint_grid_color);
+            for (int quarter = 1; quarter < 4; quarter++) {
+                double sub_tick = (double)beat_tick + (double)bar->beat_ticks * quarter / 4.0;
+                if (sub_tick < (double)bar_end_tick) {
+                    float sub_x = piano_roll_page_x(&view, &page, sub_tick);
+                    DrawLineEx((Vector2){ sub_x, view.ruler_y - 2 * scale }, (Vector2){ sub_x, view.ruler_y }, 1.0f, (Color){ 255, 255, 255, 35 });
+                }
             }
-            float streak = (24 + 24 * gl->intensity) * sc;
-            DrawRectangleGradientH((int)(gl->x - streak), (int)(gl->y - gl->h * 0.3f), (int)streak, (int)fmaxf(1.0f, gl->h * 0.6f),
-                                   (Color){ gl->c.r, gl->c.g, gl->c.b, 0 }, Fade(gl->c, fminf(0.6f, 0.3f * gl->intensity)));
+        }
+        text_draw(TextFormat("%u", position.bar - bar_in_page + (uint32_t)bar_index),
+                 (int)(piano_roll_page_x(&view, &page, bar->start_tick) + 6 * scale),
+                 (int)(area.y + 4 * scale), (int)fmaxf(10.0f, 14 * scale), (Color){ 128, 148, 165, 200 });
+    }
+    if (has_drum_lanes) {
+        DrawLineEx((Vector2){ view.left_x, view.pitch_bottom }, (Vector2){ view.right_x, view.pitch_bottom }, 1.0f, (Color){ 255, 255, 255, 30 });
+        for (int row = 1; row < PIANO_ROLL_DRUM_ROWS; row++) {
+            float row_y = view.area_bottom - row * view.drum_row_height;
+            DrawLineEx((Vector2){ view.left_x, row_y }, (Vector2){ view.right_x, row_y }, 1.0f, (Color){ 255, 255, 255, 14 });
+        }
+    }
+    DrawRectangleGradientH((int)view.left_x, (int)view.ruler_y, (int)(view.playhead_x - view.left_x), 2, BLANK, WHITE);
+
+    const int   key_count = piano_roll->high_key - piano_roll->low_key + 1;
+    view.key_slot         = (view.pitch_bottom - view.area_top) / (float)key_count;
+    view.note_thickness   = view.key_slot * 0.6f;
+    if (view.note_thickness > 9 * scale) view.note_thickness = 9 * scale;
+    if (view.note_thickness < 2 * scale) view.note_thickness = 2 * scale;
+
+    const MidiTempo* current_tempo = midi_tempo_at(piano_roll->tempo, view.playhead_tick);
+    const double     us_per_quarter = current_tempo->us_per_quarter ? current_tempo->us_per_quarter : 500000.0;
+    const double     ticks_per_sec  = piano_roll->midi->division * 1e6 / us_per_quarter;
+    view.head_ticks          = current_bar.beat_ticks / 2.0;
+    view.ticks_per_pixel     = (page.end_tick - page.start_tick) / (double)(view.right_x - view.left_x);
+    view.tail_life_ticks     = PIANO_ROLL_TAIL_LIFE * ticks_per_sec;
+    view.tail_delay_ticks    = fmin(PIANO_ROLL_TAIL_DELAY * ticks_per_sec, view.tail_life_ticks * 0.9);
+    view.tail_decay_ticks    = view.tail_life_ticks - view.tail_delay_ticks;
+    view.oldest_visible_tick = view.playhead_tick - view.tail_life_ticks;
+    view.tail_spread         = PIANO_ROLL_TAIL_SPREAD;
+    view.cell_width_ticks    = 6 * scale * view.ticks_per_pixel;
+    view.cell_pitch_ticks    = 8 * scale * view.ticks_per_pixel;
+    view.head_width          = 7 * scale;
+
+    if (has_trail && (fx & PIANO_ROLL_FX_TAIL)) piano_roll_draw_page_notes(&view, &trail_page);
+    if (has_trail && has_drum_lanes)            piano_roll_draw_page_drums(&view, &trail_page);
+    piano_roll_draw_page_notes(&view, &page);
+    piano_roll_draw_page_drums(&view, &page);
+
+    if (view.glow_count > 0 || (fx & PIANO_ROLL_FX_KICK)) {
+        BeginBlendMode(BLEND_ADDITIVE);
+        for (int glow_index = 0; glow_index < view.glow_count; glow_index++) {
+            const PianoRollGlow* glow = &view.glows[glow_index];
+            for (int layer = 0; layer < 3; layer++) {
+                float grow  = (3 + layer * 5) * scale;
+                float alpha = fminf(0.5f, 0.22f * glow->intensity / (1.0f + layer));
+                DrawRectangleRec((Rectangle){ glow->x - view.head_width - grow, glow->y - glow->height * 0.65f - grow,
+                                              view.head_width + grow * 2, glow->height * 1.3f + grow * 2 }, Fade(glow->color, alpha));
+            }
+            float streak = (24 + 24 * glow->intensity) * scale;
+            DrawRectangleGradientH((int)(glow->x - streak), (int)(glow->y - glow->height * 0.3f), (int)streak, (int)fmaxf(1.0f, glow->height * 0.6f),
+                                   (Color){ glow->color.r, glow->color.g, glow->color.b, 0 }, Fade(glow->color, fminf(0.6f, 0.3f * glow->intensity)));
         }
         if (fx & PIANO_ROLL_FX_KICK) {
-            double age = 0.0;
-            float  vel = 0.0f, k = 0.0f;
-            if (piano_roll_last_kick(r->notes, now, &age, &vel))
-                k = expf(-(float)age / 0.14f) * (0.4f + 0.6f * vel / 127.0f);
-            const unsigned char er = 190, eg = 220, eb = 255;
-            const float         lw = (1.5f + 3.0f * k) * sc;
-            const unsigned char la = (unsigned char)(40 + 215 * k);
-            const int           gw = (int)((8 + 26 * k) * sc);
-            DrawLineEx((Vector2){ left,  roll.y }, (Vector2){ left,  roll_bottom }, lw, (Color){ er, eg, eb, la });
-            DrawLineEx((Vector2){ right, roll.y }, (Vector2){ right, roll_bottom }, lw, (Color){ er, eg, eb, la });
-            DrawRectangleGradientH((int)left, (int)roll.y, gw, (int)roll.height,
-                                   (Color){ er, eg, eb, (unsigned char)(140 * k) }, (Color){ er, eg, eb, 0 });
-            DrawRectangleGradientH((int)right - gw, (int)roll.y, gw, (int)roll.height,
-                                   (Color){ er, eg, eb, 0 }, (Color){ er, eg, eb, (unsigned char)(140 * k) });
-
-            DrawRectangleGradientH(px, ruler_y - 8 * sc, gw, (int)roll.height,
-                                   (Color){ er, eg, eb, (unsigned char)(140 * k) }, (Color){ er, eg, eb, 0 });
-            DrawRectangleGradientH(px - gw, ruler_y - 8 * sc, gw, (int)roll.height,
-                                   (Color){ er, eg, eb, 0 }, (Color){ er, eg, eb, (unsigned char)(140 * k) });
+            piano_roll_draw_neon_edge(&view, view.left_x, true);
+            piano_roll_draw_neon_edge(&view, view.right_x, false);
+            piano_roll_draw_playhead_flash(&view);
         }
         EndBlendMode();
     }
 
-    DrawLineEx((Vector2){ px, ruler_y - 8 * sc }, (Vector2){ px, roll_bottom }, 7 * sc, (Color){ 255, 255, 255, 28 });
-    DrawLineEx((Vector2){ px, ruler_y - 8 * sc }, (Vector2){ px, roll_bottom }, fmaxf(1.5f, 1.8f * sc), WHITE);
+    DrawLineEx((Vector2){ view.playhead_x, view.playhead_top }, (Vector2){ view.playhead_x, view.area_bottom }, 7 * scale, (Color){ 255, 255, 255, 28 });
+    DrawLineEx((Vector2){ view.playhead_x, view.playhead_top }, (Vector2){ view.playhead_x, view.area_bottom },
+               fmaxf(1.5f, 1.8f * scale) * (1.0f + view.kick_flash), WHITE);
 }
 
-void piano_roll_draw(const PianoRoll* r, Rectangle roll, double now)
+void piano_roll_draw(const PianoRoll* piano_roll, Rectangle area, double now)
 {
-    piano_roll_draw_fx(r, roll, now, PIANO_ROLL_FX_DEFAULT);
+    piano_roll_draw_fx(piano_roll, area, now, PIANO_ROLL_FX_DEFAULT);
 }

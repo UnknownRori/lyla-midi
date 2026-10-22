@@ -18,11 +18,11 @@
 #endif
 
 #ifndef PIANO_ROLL_TAIL_LIFE
-#define PIANO_ROLL_TAIL_LIFE        2.0
+#define PIANO_ROLL_TAIL_LIFE        4.0
 #endif
 
 #ifndef PIANO_ROLL_TAIL_DELAY
-#define PIANO_ROLL_TAIL_DELAY       1.00
+#define PIANO_ROLL_TAIL_DELAY       1.40
 #endif
 
 #ifndef PIANO_ROLL_TAIL_SPREAD
@@ -33,12 +33,16 @@ enum {
     PIANO_ROLL_FX_BLOOM = 1 << 0,
     PIANO_ROLL_FX_TAIL  = 1 << 1,
     PIANO_ROLL_FX_KICK  = 1 << 2,
+    PIANO_ROLL_FX_TRAIL = 1 << 3,
+    PIANO_ROLL_FX_DRUMS = 1 << 4,
 };
 
 #define PIANO_ROLL_FX_DEFAULT ( \
     (PIANO_ROLL_BLOOM         ? PIANO_ROLL_FX_BLOOM : 0) | \
     (PIANO_ROLL_PARTICLE_TAIL ? PIANO_ROLL_FX_TAIL  : 0) | \
-    (PIANO_ROLL_KICK_FLASH    ? PIANO_ROLL_FX_KICK  : 0))
+    (PIANO_ROLL_KICK_FLASH    ? PIANO_ROLL_FX_KICK  : 0) | \
+    (PIANO_ROLL_FX_TRAIL      ? PIANO_ROLL_FX_TRAIL : 0) | \
+    (PIANO_ROLL_FX_DRUMS      ? PIANO_ROLL_FX_DRUMS : 0)) 
 
 void ui_music_profile(
     u32   w,
