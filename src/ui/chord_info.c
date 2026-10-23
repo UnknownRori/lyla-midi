@@ -24,6 +24,7 @@ static MidiChord s_chord;
 void ui_chord_info_ex(
     u32 w, 
     u32 h, 
+    f32 dt,
     MidiChord* chord,
     MidiKey*   key,
     bool       show_tones
@@ -36,7 +37,7 @@ void ui_chord_info_ex(
 
     char signature[64];
     snprintf(signature, sizeof(signature), "%s|%s", name, roman);
-    AnimFrame frame = anim_swap_update(&s_swap, signature, ANIM_CHORD_DELAY, GetFrameTime());
+    AnimFrame frame = anim_swap_update(&s_swap, signature, ANIM_CHORD_DELAY, dt);
     if (frame.replaced) {
         snprintf(s_name, sizeof(s_name), "%s", name);
         snprintf(s_roman, sizeof(s_roman), "%s", roman);
@@ -72,9 +73,10 @@ void ui_chord_info_ex(
 void ui_chord_info(
     u32 w, 
     u32 h, 
+    f32 dt,
     MidiChord* chord,
     MidiKey*   key
 )
 {
-    ui_chord_info_ex(w, h, chord, key, CHORD_INFO_TONES);
+    ui_chord_info_ex(w, h, dt, chord, key, CHORD_INFO_TONES);
 }

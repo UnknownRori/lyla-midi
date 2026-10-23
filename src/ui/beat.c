@@ -1,4 +1,5 @@
 #include <raylib.h>
+#include "rstb_common.h"
 #include "ui.h"
 #include "utils.h"
 #include "anim.h"
@@ -12,10 +13,11 @@ static f32 s_fill[MAX_BEATS];
 void ui_beat_info(
     u32 w, 
     u32 h, 
+    f32 dt,
     MidiPosition* pos
 )
 {
-    f32     dt    = GetFrameTime();
+    UNUSED(dt);
     Vector2 block = {12, 12};
     for (u8 i = 0; i < MAX_BEATS; i++) {
         s_show[i] = anim_move_toward(s_show[i], i < pos->numerator ? 1.f : 0.f, ANIM_BEAT_SPEED, dt);

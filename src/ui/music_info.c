@@ -23,6 +23,7 @@ static f32  s_elapsed_offset;
 void ui_music_info(
     u32 w, 
     u32 h, 
+    f32 dt,
     const char* key_signature, 
     u8 bpm,
     float time_played,
@@ -66,7 +67,7 @@ void ui_music_info(
     );
 
     const char* bar = TextFormat("%u/%u", nominator, denominator);
-    AnimFrame time_anim = anim_swap_update(&s_time, bar, ANIM_NO_DELAY, GetFrameTime());
+    AnimFrame time_anim = anim_swap_update(&s_time, bar, ANIM_NO_DELAY, dt);
     text_draw(
         s_time.shown, 
         offset_x - meter_measure.x - elapsed_text_measure.x, 
@@ -86,7 +87,7 @@ void ui_music_info(
         GRAY
     );
 
-    AnimFrame bpm_anim = anim_swap_update(&s_bpm, TextFormat("%d", bpm), ANIM_NO_DELAY, GetFrameTime());
+    AnimFrame bpm_anim = anim_swap_update(&s_bpm, TextFormat("%d", bpm), ANIM_NO_DELAY, dt);
     text_draw(
         s_bpm.shown, 
         offset_x - meter_measure.x - elapsed_text_measure.x - bpm_text_measure.x, 
@@ -99,7 +100,7 @@ void ui_music_info(
     Vector2 key_sig_text_measure = text_measure(key_sig_text, TEXT_SIZE_SECONDARY);
     key_sig_text_measure.x += PADDING_BETWEEN * 2;
     const char* key_text = key_signature ? key_signature : "";
-    AnimFrame key_anim = anim_swap_update(&s_key, key_text, ANIM_NO_DELAY, GetFrameTime());
+    AnimFrame key_anim = anim_swap_update(&s_key, key_text, ANIM_NO_DELAY, dt);
 
     Vector2 key_sig_measure = text_measure(s_key.shown, TEXT_SIZE);
     text_draw(
