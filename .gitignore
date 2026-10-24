@@ -21,6 +21,7 @@ raw/
 *.wav
 *.mid
 *.midi
+*.mp4
 
 *.exe
 *.o
