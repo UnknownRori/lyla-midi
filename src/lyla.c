@@ -2,10 +2,11 @@
 
 #include "lyla.h"
 #include "config.h"
+#include "version.h"
 #include "raylib.h"
 #include "rmidi.h"
 #include "rmidi_ext.h"
-#include "record.h"
+// #include "record.h"
 #include "rstb_common.h"
 #include "visualizer/fft.h"
 #include "visualizer/visualizer.h"
@@ -147,11 +148,11 @@ void lyla_init(void)
     ui_background_init(config_fx_bg_blur());
 
     visualizer = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
-    if (config_app_render()) {
-        PlayMusicStream(music);
-        render = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
-        record_start(config_video_output(), TextFormat("%dK", config_video_video_bitrate()), GetScreenWidth(), GetScreenHeight(), config_video_fps(), config_music_audio());
-    }
+    // if (config_app_render()) {
+    //     PlayMusicStream(music);
+    //     render = LoadRenderTexture(GetScreenWidth(), GetScreenHeight());
+    //     record_start(config_video_output(), TextFormat("%dK", config_video_video_bitrate()), GetScreenWidth(), GetScreenHeight(), config_video_fps(), config_music_audio());
+    // }
 }
 
 void lyla_update(void)
@@ -226,9 +227,9 @@ void lyla_update(void)
         }
 
 
-        if (recording) {
-            BeginTextureMode(render);
-        }
+        // if (recording) {
+        //     BeginTextureMode(render);
+        // }
         ClearBackground(BLANK);
         ui_background(&bg, w, h, dt, now, du);
         if (IsRenderTextureValid(visualizer)) {
@@ -241,29 +242,28 @@ void lyla_update(void)
                 ColorAlpha(WHITE, 0.10)
             );
         }
-        // ui_music_profile(w, h, &rori, "Lilith Introduction", "Lilith", "UnknownRori");
-        ui_music_profile(w, h, &thumbnail, "Lurie", "Solas na Gréine", "Rigël Theatre");
+        ui_music_profile(w, h, &thumbnail, config_music_title(), config_music_album(), config_music_author());
         ui_music_info(w, h, dt, key_text, midi_bpm_at(&tempo, ticks) , now, pos.numerator, pos.denominator);
         ui_chord_info(w, h, dt, &chord, &key);
         ui_beat_info(w, h, dt, &pos);
         piano_roll_draw(&s_roll, roll, now);
 
-        if (recording) {
-            EndTextureMode();
-            record_capture(render, GetTime());
+        // if (recording) {
+        //     EndTextureMode();
+        //     record_capture(render, GetTime());
+        //
+        //     DrawTexturePro(
+        //         render.texture, 
+        //         RECT_FROM_TEXTURE(0, 0, render.texture), 
+        //         RECT(0, 0, w, h), 
+        //         VEC2_ZERO, 
+        //         0.f, 
+        //         WHITE
+        //     );
+        // }
 
-            DrawTexturePro(
-                render.texture, 
-                RECT_FROM_TEXTURE(0, 0, render.texture), 
-                RECT(0, 0, w, h), 
-                VEC2_ZERO, 
-                0.f, 
-                WHITE
-            );
-        }
 
-
-        text_draw("UnknownRori's Softwork - v0.1", 0, 0, 6, GRAY);
+        text_draw(TextFormat("UnknownRori's Softwork - %s (%s)", VERSION, GIT_HASH), 0, 0, 8, GRAY);
 
         DrawTexturePro(
             rori, 
@@ -276,14 +276,14 @@ void lyla_update(void)
 
     }; EndDrawing();
 
-    if (!IsMusicStreamPlaying(music)) {
-        record_stop();
-    }
+    // if (!IsMusicStreamPlaying(music)) {
+    //     record_stop();
+    // }
 }
 
 void lyla_shutdown(void)
 {
-    record_stop();
+    // record_stop();
     visualizer_shutdown();
     ui_background_shutdown();
     fft_analyzer_destroy(analyzer);

@@ -109,8 +109,10 @@ bool config_load()
         s_midi_config.music_title = strdup(strval);
     }
 
-    if (rconfig_get_properties_cstr(&s_config, "MUSIC", "title", strval, sizeof(strval))) {
-        s_midi_config.music_album = strdup(strval);
+    if (rconfig_get_properties_cstr(&s_config, "MUSIC", "album", strval, sizeof(strval))) {
+        if (strlen(strval) != 0) {
+            s_midi_config.music_album = strdup(strval);
+        }
     }
 
     if (rconfig_get_properties_cstr(&s_config, "MUSIC", "author", strval, sizeof(strval))) {

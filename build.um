@@ -1,7 +1,8 @@
 import "umb.um"
 
+CC           := "clang"
+VERSION      := "v0.1"
 OPTIMIZATION := "-O3"
-CC := "clang"
 
 // TODO  : (20261017-225235) Add Web version
 fn raylib(b: ^umb::Build): ^umb::Dependency {
@@ -61,6 +62,14 @@ fn build(b: ^umb::Build) {
     raylib   := raylib(b)
     src      := b.path("./src")
     external := b.path("./external")
+    hash := b.capture("git rev-parse --short HEAD", "unknown") 
+
+    version_c := b.generate("version.c",
+        "const char* const VERSION = \"" + VERSION + "\";\n\nconst char* const GIT_HASH = \"" + hash + "\";\n"
+    )
+    b.generate("version.h",
+        "#pragma once\nextern const char* const VERSION;\nextern const char* const GIT_HASH;\n#define GIT_HASH_STR \"" + hash + "\"\n"
+    )
 
     exe := b.createExecutable({
         name    : "lyla-midi",
@@ -72,6 +81,7 @@ fn build(b: ^umb::Build) {
             src.path("text.c"),
             src.path("lyla.c"),
             src.path("config.c"),
+            src.path("record.c"),
             src.path("thirdparty/rmidi.c"),
             src.path("ui/music_profile.c"),
             src.path("ui/background.c"),
@@ -82,12 +92,14 @@ fn build(b: ^umb::Build) {
             src.path("visualizer/fft.c"),
             src.path("visualizer/visualizer.c"),
             external.path("config.c/src/rconfig.c"),
+            version_c,
         },
         include_directories: []str{
             src.path("."),
             external.path("rstb"),
             external.path("rmidi"),
             external.path("config.c/src"),
+            b.genDir(),
         }
     })
 

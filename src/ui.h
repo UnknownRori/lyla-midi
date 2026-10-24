@@ -67,6 +67,7 @@ void ui_background(
 void ui_music_info(
     u32 w, 
     u32 h, 
+    f32 dt,
     const char* key_signature, 
     u8 bpm,
     float time_played,
@@ -77,6 +78,7 @@ void ui_music_info(
 void ui_chord_info(
     u32 w, 
     u32 h, 
+    f32 dt,
     MidiChord* chord,
     MidiKey*   key
 );
@@ -84,6 +86,7 @@ void ui_chord_info(
 void ui_beat_info(
     u32 w, 
     u32 h, 
+    f32 dt,
     MidiPosition* pos
 );
 
